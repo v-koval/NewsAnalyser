@@ -1,4 +1,4 @@
-module newsanalisator
+module newsanalyzer
 
 go 1.22
 

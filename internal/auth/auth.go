@@ -13,7 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"newsanalisator/internal/repo"
+	"newsanalyzer/internal/repo"
 )
 
 type Auth struct {

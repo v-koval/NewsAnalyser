@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"newsanalisator/internal/models"
+	"newsanalyzer/internal/models"
 )
 
 type Repo struct{ Pool *pgxpool.Pool }
@@ -187,6 +187,24 @@ func (r *Repo) DeleteDigest(ctx context.Context, id string) error {
 	return err
 }
 
+// LastRunPeriodTo returns period_to of the most recent finished run
+// (status != 'processing') for the given digest, or nil if there is none.
+func (r *Repo) LastRunPeriodTo(ctx context.Context, digestID string) (*time.Time, error) {
+	var t time.Time
+	err := r.Pool.QueryRow(ctx,
+		`SELECT period_to FROM digest_runs
+		 WHERE digest_id=$1 AND status <> 'processing'
+		 ORDER BY period_to DESC LIMIT 1`,
+		digestID).Scan(&t)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (r *Repo) SetDigestLastRun(ctx context.Context, id string, t time.Time) error {
 	_, err := r.Pool.Exec(ctx, `UPDATE digests SET last_run_at=$2 WHERE id=$1`, id, t)
 	return err
@@ -223,11 +241,34 @@ func (r *Repo) AppendAutoSources(ctx context.Context, id string, newSources []st
 func (r *Repo) CreateRun(ctx context.Context, run models.DigestRun) (models.DigestRun, error) {
 	analyzed, _ := json.Marshal(orEmpty(run.AnalyzedSources))
 	err := r.Pool.QueryRow(ctx,
-		`INSERT INTO digest_runs(digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,html,status,error)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,processed_at`,
-		run.DigestID, run.DigestName, analyzed, run.ProcessedAt, run.PeriodFrom, run.PeriodTo, run.HTML, run.Status, run.Error).
+		`INSERT INTO digest_runs(digest_id,digest_name,analyzed_sources,period_from,period_to,html,status,error)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,processed_at`,
+		run.DigestID, run.DigestName, analyzed, run.PeriodFrom, run.PeriodTo, run.HTML, run.Status, run.Error).
 		Scan(&run.ID, &run.ProcessedAt)
 	return run, err
+}
+
+func (r *Repo) StartRun(ctx context.Context, run models.DigestRun) (models.DigestRun, error) {
+	analyzed, _ := json.Marshal(orEmpty(run.AnalyzedSources))
+	run.Status = "processing"
+	err := r.Pool.QueryRow(ctx,
+		`INSERT INTO digest_runs(digest_id,digest_name,analyzed_sources,period_from,period_to,html,status)
+		 VALUES($1,$2,$3,$4,$5,'',$6) RETURNING id,processed_at`,
+		run.DigestID, run.DigestName, analyzed, run.PeriodFrom, run.PeriodTo, run.Status).
+		Scan(&run.ID, &run.ProcessedAt)
+	return run, err
+}
+
+func (r *Repo) FinishRun(ctx context.Context, run models.DigestRun) error {
+	analyzed, _ := json.Marshal(orEmpty(run.AnalyzedSources))
+	err := r.Pool.QueryRow(ctx,
+		`UPDATE digest_runs
+		 SET analyzed_sources=$2, html=$3, status=$4, error=$5, processed_at=now()
+		 WHERE id=$1
+		 RETURNING processed_at`,
+		run.ID, analyzed, run.HTML, run.Status, run.Error).
+		Scan(&run.ProcessedAt)
+	return err
 }
 
 func (r *Repo) AddMaterial(ctx context.Context, runID string, m models.Material) error {

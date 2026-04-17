@@ -23,7 +23,7 @@ func Load() Config {
 	loadDotenv(".env")
 	c := Config{
 		HTTPAddr:          getenv("HTTP_ADDR", ":8080"),
-		DatabaseURL:       getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/newsanalisator?sslmode=disable"),
+		DatabaseURL:       getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/newsanalyzer?sslmode=disable"),
 		JWTSecret:         getenv("JWT_SECRET", "dev-secret-change-me-please-32bytes"),
 		AccessTTLMin:      getenvInt("ACCESS_TTL_MIN", 15),
 		RefreshTTLHours:   getenvInt("REFRESH_TTL_HOURS", 720),

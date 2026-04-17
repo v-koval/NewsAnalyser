@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"newsanalisator/internal/processor"
-	"newsanalisator/internal/repo"
+	"newsanalyzer/internal/processor"
+	"newsanalyzer/internal/repo"
 )
 
 type Scheduler struct {
@@ -73,11 +73,14 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 func (s *Scheduler) runOne(ctx context.Context, id string) {
+	log.Printf("runOne: starting digest %s", id)
 	settings, err := s.Repo.GetSettings(ctx)
 	if err != nil {
+		log.Printf("runOne: get settings: %v", err)
 		return
 	}
 	if settings.ProcessingPaused {
+		log.Printf("runOne: processing paused, skipping")
 		return
 	}
 	runCtx, cancel := context.WithTimeout(ctx, 35*time.Minute)

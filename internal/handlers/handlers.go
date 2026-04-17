@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strings"
 
-	"newsanalisator/internal/auth"
-	"newsanalisator/internal/models"
-	"newsanalisator/internal/processor"
-	"newsanalisator/internal/repo"
-	"newsanalisator/internal/scheduler"
+	"newsanalyzer/internal/auth"
+	"newsanalyzer/internal/models"
+	"newsanalyzer/internal/processor"
+	"newsanalyzer/internal/repo"
+	"newsanalyzer/internal/scheduler"
 )
 
 //go:embed web/*

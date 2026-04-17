@@ -6,7 +6,7 @@ import (
 	"net/smtp"
 	"strings"
 
-	"newsanalisator/internal/models"
+	"newsanalyzer/internal/models"
 )
 
 type Mailer struct{ S models.Settings }

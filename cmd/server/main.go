@@ -10,14 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"newsanalisator/internal/auth"
-	"newsanalisator/internal/config"
-	"newsanalisator/internal/db"
-	"newsanalisator/internal/handlers"
-	"newsanalisator/internal/images"
-	"newsanalisator/internal/processor"
-	"newsanalisator/internal/repo"
-	"newsanalisator/internal/scheduler"
+	"newsanalyzer/internal/auth"
+	"newsanalyzer/internal/config"
+	"newsanalyzer/internal/db"
+	"newsanalyzer/internal/handlers"
+	"newsanalyzer/internal/images"
+	"newsanalyzer/internal/processor"
+	"newsanalyzer/internal/repo"
+	"newsanalyzer/internal/scheduler"
 )
 
 func main() {

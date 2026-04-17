@@ -172,9 +172,9 @@ function openDigestModal(d) {
     <label>Источники для анализа <div id="ta-sources"></div></label>
     <label>Игнорируемые источники <div id="ta-ignored"></div></label>
     <label>Получатели (email) <div id="ta-recipients"></div></label>
-    <label><input type="checkbox" name="enabled"> Включен</label>
+    <label class="check"><input type="checkbox" name="enabled"> Включен</label>
     <div class="err" id="d-err"></div>
-    <div class="row" style="justify-content:flex-end">
+    <div class="row actions-end">
       <button type="button" class="secondary" id="d-cancel">Отмена</button>
       <button type="submit">Сохранить</button>
     </div></form>`;
@@ -235,10 +235,10 @@ async function renderRuns() {
 async function renderSettings() {
   const v = $('#view');
   v.innerHTML = `<div class="section-head"><h2>Настройки</h2></div>
-    <div class="card" style="margin-bottom:16px"><h3>Обработка</h3>
-      <div class="row"><button id="toggle-proc" class="secondary">…</button></div>
+    <div class="card"><h3>Обработка</h3>
+      <div class="row actions-end"><button id="toggle-proc" class="secondary">…</button></div>
     </div>
-    <div class="card" style="margin-bottom:16px"><h3>API и SMTP</h3>
+    <div class="card"><h3>API и SMTP</h3>
       <form id="settings-form">
         <label>Cursor API key<input name="cursor_api_key" placeholder="оставьте пустым чтобы не менять"></label>
         <label>Cursor Repository URL<input name="cursor_repository" placeholder="https://github.com/user/repo"></label>
@@ -252,15 +252,15 @@ async function renderSettings() {
         </div>
         <div class="row">
           <label>From<input name="smtp_from"></label>
-          <label><input type="checkbox" name="smtp_tls"> TLS (465)</label>
+          <label class="check"><input type="checkbox" name="smtp_tls"> TLS (465)</label>
         </div>
         <div class="err" id="s-err"></div>
-        <button type="submit">Сохранить</button>
+        <div class="row actions-end"><button type="submit">Сохранить</button></div>
       </form>
     </div>
     <div class="card"><h3>Пользователи</h3>
       <div id="ulist" class="list">Загрузка…</div>
-      <div style="margin-top:12px"><button id="new-user">+ Добавить пользователя</button></div>
+      <div class="row actions-end" style="margin-top:14px"><button id="new-user">+ Добавить пользователя</button></div>
     </div>`;
   const s = await api('/api/settings');
   const form = $('#settings-form');
@@ -314,7 +314,7 @@ function openUserModal(u) {
     <label>Email<input name="email" type="email" required></label>
     <label>Пароль ${editing?'(пусто — не менять)':''}<input name="password" type="password" ${editing?'':'required'}></label>
     <div class="err" id="u-err"></div>
-    <div class="row" style="justify-content:flex-end">
+    <div class="row actions-end">
       <button type="button" class="secondary" id="u-cancel">Отмена</button>
       <button type="submit">Сохранить</button>
     </div></form>`;

@@ -180,8 +180,26 @@ func ExtractJSON(s string) string {
 		closeCh = ']'
 	}
 	depth := 0
+	inStr := false
+	escaped := false
 	for i := start; i < len(s); i++ {
-		switch s[i] {
+		c := s[i]
+		if inStr {
+			if escaped {
+				escaped = false
+				continue
+			}
+			switch c {
+			case '\\':
+				escaped = true
+			case '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
 		case openCh:
 			depth++
 		case closeCh:
@@ -192,4 +210,63 @@ func ExtractJSON(s string) string {
 		}
 	}
 	return s[start:]
+}
+
+// RepairJSON best-effort escapes stray unescaped double quotes inside JSON
+// string values. LLMs often emit quoted titles like «из "Just Like Heaven"»
+// without escaping the inner quotes; this walks the text and escapes any `"`
+// whose next non-whitespace char is not a structural terminator (`,`, `}`,
+// `]`, `:`) or end of input.
+func RepairJSON(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 16)
+	inStr := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !inStr {
+			if c == '"' {
+				inStr = true
+			}
+			b.WriteByte(c)
+			continue
+		}
+		if escaped {
+			b.WriteByte(c)
+			escaped = false
+			continue
+		}
+		if c == '\\' {
+			b.WriteByte(c)
+			escaped = true
+			continue
+		}
+		if c == '"' {
+			j := i + 1
+			for j < len(s) {
+				n := s[j]
+				if n == ' ' || n == '\t' || n == '\n' || n == '\r' {
+					j++
+					continue
+				}
+				break
+			}
+			if j >= len(s) {
+				b.WriteByte(c)
+				inStr = false
+				continue
+			}
+			n := s[j]
+			if n == ',' || n == '}' || n == ']' || n == ':' {
+				b.WriteByte(c)
+				inStr = false
+			} else {
+				b.WriteByte('\\')
+				b.WriteByte('"')
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }

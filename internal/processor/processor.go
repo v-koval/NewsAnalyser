@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"newsanalisator/internal/cursor"
-	"newsanalisator/internal/images"
-	"newsanalisator/internal/mailer"
-	"newsanalisator/internal/models"
-	"newsanalisator/internal/repo"
+	"newsanalyzer/internal/cursor"
+	"newsanalyzer/internal/images"
+	"newsanalyzer/internal/mailer"
+	"newsanalyzer/internal/models"
+	"newsanalyzer/internal/repo"
 )
 
 type Processor struct {
@@ -81,67 +81,92 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 
 	to := time.Now().UTC()
 	var from time.Time
-	if d.LastRunAt != nil {
-		from = d.LastRunAt.UTC()
+	last, err := p.Repo.LastRunPeriodTo(ctx, d.ID)
+	if err != nil {
+		return fmt.Errorf("last run period_to: %w", err)
+	}
+	if last != nil {
+		from = last.UTC()
 	} else {
 		from = to.Add(-7 * 24 * time.Hour)
 	}
 
 	prompt := buildPrompt(d, from, to)
 
-	cc := cursor.New(settings.CursorAPIKey)
-	text, aerr := cc.RunPrompt(ctx, prompt, settings.CursorRepository)
 	run := models.DigestRun{
 		DigestID:   d.ID,
 		DigestName: d.Name,
 		PeriodFrom: from,
 		PeriodTo:   to,
-		Status:     "ok",
 	}
+	started, err := p.Repo.StartRun(ctx, run)
+	if err != nil {
+		return fmt.Errorf("start run: %w", err)
+	}
+	run = started
+	run.Status = "ok"
+
+	cc := cursor.New(settings.CursorAPIKey)
+	text, aerr := cc.RunPrompt(ctx, prompt, settings.CursorRepository)
 	if aerr != nil {
 		run.Status = "error"
 		run.Error = aerr.Error()
 		run.HTML = "<p>Ошибка обработки: " + html.EscapeString(aerr.Error()) + "</p>"
-		if _, err := p.Repo.CreateRun(ctx, run); err != nil {
-			log.Printf("save failed run: %v", err)
+		if err := p.Repo.FinishRun(ctx, run); err != nil {
+			log.Printf("finish failed run: %v", err)
 		}
 		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
 		return aerr
 	}
 
+	log.Printf("agent response length: %d chars", len(text))
+	if len(text) > 500 {
+		log.Printf("agent response start: %s", text[:500])
+	} else {
+		log.Printf("agent response full: %s", text)
+	}
 	raw := cursor.ExtractJSON(text)
+	log.Printf("extracted JSON length: %d chars", len(raw))
 	var ar agentResponse
-	if err := json.Unmarshal([]byte(raw), &ar); err != nil {
+	parseErr := json.Unmarshal([]byte(raw), &ar)
+	if parseErr != nil {
+		repaired := cursor.RepairJSON(raw)
+		if repaired != raw {
+			log.Printf("parse agent json failed (%v), retrying with repaired payload", parseErr)
+			if err := json.Unmarshal([]byte(repaired), &ar); err == nil {
+				parseErr = nil
+			} else {
+				log.Printf("repaired parse also failed: %v", err)
+				parseErr = err
+			}
+		}
+	}
+	if parseErr != nil {
 		run.Status = "error"
-		run.Error = "bad agent response: " + err.Error()
+		run.Error = "bad agent response: " + parseErr.Error()
 		run.HTML = "<p>Не удалось разобрать ответ агента.</p><pre>" + html.EscapeString(text) + "</pre>"
-		if _, err := p.Repo.CreateRun(ctx, run); err != nil {
-			log.Printf("save failed run: %v", err)
+		if err := p.Repo.FinishRun(ctx, run); err != nil {
+			log.Printf("finish failed run: %v", err)
 		}
 		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
-		return fmt.Errorf("parse agent json: %w", err)
+		return fmt.Errorf("parse agent json: %w", parseErr)
 	}
 
 	run.AnalyzedSources = mergeStrings(d.Sources, ar.AnalyzedSources)
 	if len(ar.Materials) == 0 {
 		run.Status = "empty"
 		run.HTML = buildHTML(d, from, to, nil, "")
-		saved, err := p.Repo.CreateRun(ctx, run)
-		if err != nil {
+		if err := p.Repo.FinishRun(ctx, run); err != nil {
 			return err
 		}
 		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
 		if len(ar.DiscoveredSources) > 0 && len(d.Sources) == 0 {
 			_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 		}
-		sendMail(d, saved, settings)
+		sendMail(d, run, settings)
 		return nil
 	}
 
-	saved, err := p.Repo.CreateRun(ctx, run)
-	if err != nil {
-		return err
-	}
 	for i, m := range ar.Materials {
 		mat := models.Material{
 			URL:          m.URL,
@@ -149,30 +174,40 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 			SummaryTitle: strOr(m.SummaryTitle, m.Title),
 			SummaryText:  m.SummaryText,
 			FullText:     m.FullText,
-			ImageURL:     m.ImageURL,
 			Position:     i,
 		}
+		candidates := []string{}
+		if resolved, err := p.Images.ResolveArticleImage(ctx, m.URL); err != nil {
+			log.Printf("resolve article image %s: %v", m.URL, err)
+		} else if resolved != "" {
+			candidates = append(candidates, resolved)
+		}
 		if m.ImageURL != "" {
-			if _, pub, err := p.Images.Fetch(ctx, saved.ID, m.ImageURL); err == nil {
+			candidates = append(candidates, m.ImageURL)
+		}
+		for _, imgURL := range candidates {
+			if _, pub, err := p.Images.Fetch(ctx, run.ID, imgURL); err == nil {
+				mat.ImageURL = imgURL
 				mat.LocalImage = pub
+				break
 			} else {
-				log.Printf("image fetch %s: %v", m.ImageURL, err)
+				log.Printf("image fetch %s: %v", imgURL, err)
 			}
 		}
-		if err := p.Repo.AddMaterial(ctx, saved.ID, mat); err != nil {
+		if err := p.Repo.AddMaterial(ctx, run.ID, mat); err != nil {
 			log.Printf("save material: %v", err)
 		}
-		saved.Materials = append(saved.Materials, mat)
+		run.Materials = append(run.Materials, mat)
 	}
-	saved.HTML = buildHTML(d, from, to, saved.Materials, "")
-	if _, err := p.Repo.Pool.Exec(ctx, `UPDATE digest_runs SET html=$2 WHERE id=$1`, saved.ID, saved.HTML); err != nil {
-		log.Printf("update html: %v", err)
+	run.HTML = buildHTML(d, from, to, run.Materials, "")
+	if err := p.Repo.FinishRun(ctx, run); err != nil {
+		log.Printf("finish run: %v", err)
 	}
 	_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
 	if len(ar.DiscoveredSources) > 0 {
 		_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 	}
-	sendMail(d, saved, settings)
+	sendMail(d, run, settings)
 	return nil
 }
 
@@ -206,7 +241,7 @@ func buildPrompt(d models.Digest, from, to time.Time) string {
 Для каждого материала собери:
 - исходный URL (обязательно),
 - оригинальный заголовок,
-- URL основной иллюстрации, если есть,
+- URL основной иллюстрации (image_url) — только если это РЕАЛЬНАЯ прямая ссылка на картинку с сайта-источника, которую ты сам видел в материале. НЕ УГАДЫВАЙ и не конструируй URL по шаблону. Если не уверен — оставь image_url пустой строкой, мы сами извлечём обложку из Open Graph-меток страницы,
 - краткий заголовок (summary_title, 1 строка, основная мысль),
 - короткий пересказ (summary_text, 3-5 предложений: основная мысль и выводы),
 - полный текст материала (full_text) на выбранном языке, сохраняя смысл и структуру оригинала.
@@ -214,7 +249,15 @@ func buildPrompt(d models.Digest, from, to time.Time) string {
 Если ты самостоятельно подбирал источники — верни их в discovered_sources.
 В analyzed_sources верни итоговый список проанализированных сайтов (доменов).
 
-Верни СТРОГО JSON в таком формате, без markdown и без пояснений:
+ВАЖНО: НЕ СОЗДАВАЙ НИКАКИХ ФАЙЛОВ. Не сохраняй результат в файл. Верни JSON ПРЯМО В ТЕКСТЕ ОТВЕТА.
+Не пиши никаких пояснений, комментариев или описаний — только чистый JSON.
+
+ТРЕБОВАНИЯ К JSON:
+- Строго валидный JSON по RFC 8259, UTF-8.
+- Внутри строковых значений запрещены неэкранированные двойные кавычки. Если нужно процитировать что-то, используй «ёлочки», „лапки" или одиночные кавычки, либо экранируй двойные как \".
+- Все переводы строк внутри строк должны быть записаны как \n.
+
+Формат ответа:
 {
   "materials": [
     {

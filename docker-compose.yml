@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: newsanalisator
+      POSTGRES_DB: newsanalyzer
     ports:
       - "5432:5432"
     volumes:
