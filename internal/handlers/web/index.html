@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>News Analisator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="login" class="login hidden">
+  <form id="login-form" class="card">
+    <h1>Вход</h1>
+    <label>Email <input type="email" name="email" required></label>
+    <label>Пароль <input type="password" name="password" required></label>
+    <button type="submit">Войти</button>
+    <p class="err" id="login-err"></p>
+  </form>
+</div>
+
+<div id="app" class="app hidden">
+  <header>
+    <div class="brand">News Analisator</div>
+    <nav>
+      <a href="#/digests" data-tab="digests">Дайджесты</a>
+      <a href="#/runs" data-tab="runs">История</a>
+      <a href="#/settings" data-tab="settings">Настройки</a>
+    </nav>
+    <div class="user">
+      <span id="user-email"></span>
+      <button id="logout">Выход</button>
+    </div>
+  </header>
+  <main id="view"></main>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
