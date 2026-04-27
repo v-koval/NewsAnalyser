@@ -29,7 +29,7 @@ func New(apiKey string) *Client {
 		BaseURL:    DefaultBaseURL,
 		HTTP:       &http.Client{Timeout: 90 * time.Second},
 		PollPeriod: 15 * time.Second,
-		MaxWait:    30 * time.Minute,
+		MaxWait:    45 * time.Minute,
 	}
 }
 

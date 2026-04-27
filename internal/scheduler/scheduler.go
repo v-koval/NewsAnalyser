@@ -83,7 +83,7 @@ func (s *Scheduler) runOne(ctx context.Context, id string) {
 		log.Printf("runOne: processing paused, skipping")
 		return
 	}
-	runCtx, cancel := context.WithTimeout(ctx, 35*time.Minute)
+	runCtx, cancel := context.WithTimeout(ctx, 50*time.Minute)
 	defer cancel()
 	if err := s.Processor.Run(runCtx, id); err != nil {
 		log.Printf("run digest %s: %v", id, err)
