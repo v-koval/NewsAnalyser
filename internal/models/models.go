@@ -32,6 +32,7 @@ type Digest struct {
 	Language       string     `json:"language"`
 	Enabled        bool       `json:"enabled"`
 	LastRunAt      *time.Time `json:"last_run_at"`
+	NextRunAt      *time.Time `json:"next_run_at"`
 	AutoSources    []string   `json:"auto_sources"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`

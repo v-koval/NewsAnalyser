@@ -124,7 +124,7 @@ func (r *Repo) UpdateSettings(ctx context.Context, s models.Settings) error {
 func scanDigest(row pgx.Row) (models.Digest, error) {
 	var d models.Digest
 	var sources, ignored, recipients, auto []byte
-	err := row.Scan(&d.ID, &d.Name, &d.Topic, &sources, &ignored, &d.FrequencyHours, &recipients, &d.Language, &d.Enabled, &d.LastRunAt, &auto, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &d.Name, &d.Topic, &sources, &ignored, &d.FrequencyHours, &recipients, &d.Language, &d.Enabled, &d.LastRunAt, &d.NextRunAt, &auto, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return d, err
 	}
@@ -135,7 +135,7 @@ func scanDigest(row pgx.Row) (models.Digest, error) {
 	return d, nil
 }
 
-const digestCols = `id,name,topic,sources,ignored_sources,frequency_hours,recipients,language,enabled,last_run_at,auto_sources,created_at,updated_at`
+const digestCols = `id,name,topic,sources,ignored_sources,frequency_hours,recipients,language,enabled,last_run_at,next_run_at,auto_sources,created_at,updated_at`
 
 func (r *Repo) CreateDigest(ctx context.Context, d models.Digest) (models.Digest, error) {
 	src, _ := json.Marshal(orEmpty(d.Sources))
@@ -207,6 +207,11 @@ func (r *Repo) LastRunPeriodTo(ctx context.Context, digestID string) (*time.Time
 
 func (r *Repo) SetDigestLastRun(ctx context.Context, id string, t time.Time) error {
 	_, err := r.Pool.Exec(ctx, `UPDATE digests SET last_run_at=$2 WHERE id=$1`, id, t)
+	return err
+}
+
+func (r *Repo) SetDigestNextRun(ctx context.Context, id string, t time.Time) error {
+	_, err := r.Pool.Exec(ctx, `UPDATE digests SET next_run_at=$2 WHERE id=$1`, id, t)
 	return err
 }
 
