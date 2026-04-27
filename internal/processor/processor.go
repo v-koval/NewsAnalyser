@@ -61,15 +61,20 @@ func (p *Processor) unlock(id string) {
 	delete(p.running, id)
 }
 
-// advanceSchedule writes the actual run start time to last_run_at, and — if
-// scheduled is true — advances next_run_at by exactly one frequency from its
-// previous *planned* value. Manual ("run now") triggers pass scheduled=false
-// so the regular schedule is not shifted by user actions.
+// advanceSchedule writes the actual run start time to last_run_at and decides
+// whether to advance next_run_at:
+//   - For scheduled (automatic) runs, next_run_at is advanced by exactly one
+//     frequency from its previous *planned* value (or initialized from `to`
+//     for the first ever run).
+//   - For manual ("run now") triggers, the regular schedule is preserved:
+//     next_run_at is left untouched. The exception is the first run of a
+//     newly created digest, where next_run_at is still NULL and must be
+//     initialized so the scheduler tick does not fire the digest again.
 func (p *Processor) advanceSchedule(ctx context.Context, d models.Digest, to time.Time, scheduled bool) {
 	if err := p.Repo.SetDigestLastRun(ctx, d.ID, to); err != nil {
 		log.Printf("set last_run_at: %v", err)
 	}
-	if !scheduled {
+	if !scheduled && d.NextRunAt != nil {
 		return
 	}
 	freq := time.Duration(d.FrequencyHours) * time.Hour

@@ -78,28 +78,36 @@ Tick interval (1 hour) and the `s.trigger` channel are unchanged.
 In `internal/processor/processor.go`, all four current call sites of `SetDigestLastRun(ctx, d.ID, to)` are replaced by a single helper:
 
 ```go
-func (p *Processor) advanceSchedule(ctx context.Context, d models.Digest, to time.Time) {
+func (p *Processor) advanceSchedule(ctx context.Context, d models.Digest, to time.Time, scheduled bool) {
+    p.Repo.SetDigestLastRun(ctx, d.ID, to)
+    // Manual triggers preserve the regular schedule — except for the first
+    // run of a brand-new digest, where next_run_at is still NULL and must be
+    // initialized so the next tick does not fire the digest again.
+    if !scheduled && d.NextRunAt != nil {
+        return
+    }
     freq := time.Duration(d.FrequencyHours) * time.Hour
     var next time.Time
     if d.NextRunAt != nil {
-        next = d.NextRunAt.Add(freq)
+        next = d.NextRunAt.Add(freq)  // shift relative to PLANNED time, not now()
     } else {
-        next = to.Add(freq)
+        next = to.Add(freq)            // first run anchors the schedule
     }
-    _ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
-    _ = p.Repo.SetDigestNextRun(ctx, d.ID, next)
+    p.Repo.SetDigestNextRun(ctx, d.ID, next)
 }
 ```
 
+(Errors are elided in the pseudocode for clarity; the implementation logs them.)
+
 The crucial property is `next = d.NextRunAt + freq`, **not** `now + freq`. This eliminates the drift: tick timing and processing duration no longer leak into the schedule.
 
-If `NextRunAt` is `nil` (first run of a freshly created digest), `next = to + freq` — the schedule anchors at the moment of the first actual run.
+If `NextRunAt` is `nil` (first run of a freshly created digest), `next = to + freq` — the schedule anchors at the moment of the first actual run. This initialization applies to both scheduled and manual first runs, so that a brand-new digest manually triggered does not get re-fired by the next scheduler tick.
 
 ### Manual trigger
 
 `Scheduler.Trigger(digestID)` already exists for the UI "run now" button. It must **not** modify `next_run_at` — manual runs do not shift the regular schedule.
 
-Implementation: `Processor.Run` accepts an additional boolean parameter `advanceSchedule`. The scheduled path (`Scheduler.tick` → `Scheduler.runOne`) passes `true`; the manual path (`Scheduler.Trigger` → `Scheduler.runOne`) passes `false`. Inside `Processor.Run`, the `advanceSchedule` helper is invoked only when the flag is true. Manual runs always call `SetDigestLastRun(to)` for UI consistency.
+Implementation: `Processor.Run` accepts an additional boolean parameter `scheduled`. The scheduled path (`Scheduler.tick` → `Scheduler.runOne`) passes `true`; the manual path (`Scheduler.Trigger` → `Scheduler.runOne`) passes `false`. Inside `Processor.Run`, the `advanceSchedule` helper writes `last_run_at` unconditionally; it then writes `next_run_at` if the run was scheduled, OR if `next_run_at` is still `NULL` (first-run initialization for newly created digests).
 
 ### Repo changes
 
@@ -144,7 +152,7 @@ NextRunAt *time.Time `json:"next_run_at"`
 | Tick fires late (typical case)                   | Processed as a normal slot if delay < `frequency`. Schedule keeps the original grid.                                |
 | App was offline through one or more slots        | First post-restart tick: scheduler advances `next_run_at` to the nearest future slot **without running**.            |
 | `frequency_hours` changed via UI                 | `next_run_at` is **not** recalculated. The current planned slot stands; subsequent slots use the new period.         |
-| Manual "run now" trigger                         | Runs immediately. `last_run_at` updates. `next_run_at` is **not** modified — regular schedule is preserved.          |
+| Manual "run now" trigger                         | Runs immediately. `last_run_at` updates. `next_run_at` is **not** modified — except on the very first run of a newly created digest, where `next_run_at` is initialized to `last_run_at + frequency`. Otherwise the regular schedule is preserved. |
 
 ## Verification
 
