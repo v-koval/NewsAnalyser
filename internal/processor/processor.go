@@ -61,7 +61,30 @@ func (p *Processor) unlock(id string) {
 	delete(p.running, id)
 }
 
-func (p *Processor) Run(ctx context.Context, digestID string) error {
+// advanceSchedule writes the actual run start time to last_run_at, and — if
+// scheduled is true — advances next_run_at by exactly one frequency from its
+// previous *planned* value. Manual ("run now") triggers pass scheduled=false
+// so the regular schedule is not shifted by user actions.
+func (p *Processor) advanceSchedule(ctx context.Context, d models.Digest, to time.Time, scheduled bool) {
+	if err := p.Repo.SetDigestLastRun(ctx, d.ID, to); err != nil {
+		log.Printf("set last_run_at: %v", err)
+	}
+	if !scheduled {
+		return
+	}
+	freq := time.Duration(d.FrequencyHours) * time.Hour
+	var next time.Time
+	if d.NextRunAt != nil {
+		next = d.NextRunAt.Add(freq)
+	} else {
+		next = to.Add(freq)
+	}
+	if err := p.Repo.SetDigestNextRun(ctx, d.ID, next); err != nil {
+		log.Printf("set next_run_at: %v", err)
+	}
+}
+
+func (p *Processor) Run(ctx context.Context, digestID string, scheduled bool) error {
 	if !p.tryLock(digestID) {
 		return fmt.Errorf("digest %s already running", digestID)
 	}
@@ -115,7 +138,7 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 		if err := p.Repo.FinishRun(ctx, run); err != nil {
 			log.Printf("finish failed run: %v", err)
 		}
-		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
+		p.advanceSchedule(ctx, d, to, scheduled)
 		return aerr
 	}
 
@@ -148,7 +171,7 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 		if err := p.Repo.FinishRun(ctx, run); err != nil {
 			log.Printf("finish failed run: %v", err)
 		}
-		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
+		p.advanceSchedule(ctx, d, to, scheduled)
 		return fmt.Errorf("parse agent json: %w", parseErr)
 	}
 
@@ -159,7 +182,7 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 		if err := p.Repo.FinishRun(ctx, run); err != nil {
 			return err
 		}
-		_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
+		p.advanceSchedule(ctx, d, to, scheduled)
 		if len(ar.DiscoveredSources) > 0 && len(d.Sources) == 0 {
 			_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 		}
@@ -203,7 +226,7 @@ func (p *Processor) Run(ctx context.Context, digestID string) error {
 	if err := p.Repo.FinishRun(ctx, run); err != nil {
 		log.Printf("finish run: %v", err)
 	}
-	_ = p.Repo.SetDigestLastRun(ctx, d.ID, to)
+	p.advanceSchedule(ctx, d, to, scheduled)
 	if len(ar.DiscoveredSources) > 0 {
 		_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 	}

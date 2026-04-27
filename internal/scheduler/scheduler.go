@@ -41,7 +41,7 @@ func (s *Scheduler) loop(ctx context.Context) {
 		case <-t.C:
 			s.tick(ctx)
 		case id := <-s.trigger:
-			s.runOne(ctx, id)
+			s.runOne(ctx, id, false)
 		}
 	}
 }
@@ -65,15 +65,41 @@ func (s *Scheduler) tick(ctx context.Context) {
 		if !d.Enabled {
 			continue
 		}
-		if d.LastRunAt != nil && now.Sub(d.LastRunAt.UTC()) < time.Duration(d.FrequencyHours)*time.Hour {
+		freq := time.Duration(d.FrequencyHours) * time.Hour
+
+		// First-ever run: next_run_at is NULL, fire immediately.
+		if d.NextRunAt == nil {
+			go s.runOne(ctx, d.ID, true)
 			continue
 		}
-		go s.runOne(ctx, d.ID)
+
+		next := d.NextRunAt.UTC()
+
+		// Slot still in the future — wait.
+		if now.Before(next) {
+			continue
+		}
+
+		// Slot is more than one full frequency in the past: missed slots are
+		// dropped. Jump next_run_at forward to the nearest future grid point
+		// without running.
+		if now.Sub(next) >= freq {
+			for !next.After(now) {
+				next = next.Add(freq)
+			}
+			if err := s.Repo.SetDigestNextRun(ctx, d.ID, next); err != nil {
+				log.Printf("scheduler: jump next_run_at for digest %s: %v", d.ID, err)
+			}
+			continue
+		}
+
+		// Normal slot: next_run_at <= now < next_run_at + freq.
+		go s.runOne(ctx, d.ID, true)
 	}
 }
 
-func (s *Scheduler) runOne(ctx context.Context, id string) {
-	log.Printf("runOne: starting digest %s", id)
+func (s *Scheduler) runOne(ctx context.Context, id string, scheduled bool) {
+	log.Printf("runOne: starting digest %s (scheduled=%v)", id, scheduled)
 	settings, err := s.Repo.GetSettings(ctx)
 	if err != nil {
 		log.Printf("runOne: get settings: %v", err)
@@ -85,7 +111,7 @@ func (s *Scheduler) runOne(ctx context.Context, id string) {
 	}
 	runCtx, cancel := context.WithTimeout(ctx, 50*time.Minute)
 	defer cancel()
-	if err := s.Processor.Run(runCtx, id); err != nil {
+	if err := s.Processor.Run(runCtx, id, scheduled); err != nil {
 		log.Printf("run digest %s: %v", id, err)
 	}
 }
