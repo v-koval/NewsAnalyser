@@ -116,6 +116,7 @@ async function renderDigests() {
           <div class="meta">Получатели: ${d.recipients.map(esc).join(', ') || '—'}</div>
           <div class="meta">Источники: ${(d.sources.length?d.sources:d.auto_sources).map(esc).join(', ') || '— будут подобраны автоматически'}</div>
           <div class="meta">Последний запуск: ${d.last_run_at ? new Date(d.last_run_at).toLocaleString() : '—'}</div>
+          <div class="meta">Следующий запуск: ${d.next_run_at ? new Date(d.next_run_at).toLocaleString() : '—'}</div>
         </div>
         <div class="actions">
           <button class="secondary" data-act="run">Запустить</button>
