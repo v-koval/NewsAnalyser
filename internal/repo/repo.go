@@ -124,7 +124,7 @@ func (r *Repo) UpdateSettings(ctx context.Context, s models.Settings) error {
 func scanDigest(row pgx.Row) (models.Digest, error) {
 	var d models.Digest
 	var sources, ignored, recipients, auto []byte
-	err := row.Scan(&d.ID, &d.Name, &d.Topic, &sources, &ignored, &d.FrequencyHours, &recipients, &d.Language, &d.Enabled, &d.LastRunAt, &d.NextRunAt, &auto, &d.CreatedAt, &d.UpdatedAt)
+	err := row.Scan(&d.ID, &d.Name, &d.Topic, &sources, &ignored, &d.FrequencyHours, &recipients, &d.Language, &d.Kind, &d.Enabled, &d.LastRunAt, &d.NextRunAt, &auto, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return d, err
 	}
@@ -135,7 +135,7 @@ func scanDigest(row pgx.Row) (models.Digest, error) {
 	return d, nil
 }
 
-const digestCols = `id,name,topic,sources,ignored_sources,frequency_hours,recipients,language,enabled,last_run_at,next_run_at,auto_sources,created_at,updated_at`
+const digestCols = `id,name,topic,sources,ignored_sources,frequency_hours,recipients,language,kind,enabled,last_run_at,next_run_at,auto_sources,created_at,updated_at`
 
 func (r *Repo) CreateDigest(ctx context.Context, d models.Digest) (models.Digest, error) {
 	src, _ := json.Marshal(orEmpty(d.Sources))
@@ -143,9 +143,9 @@ func (r *Repo) CreateDigest(ctx context.Context, d models.Digest) (models.Digest
 	rec, _ := json.Marshal(orEmpty(d.Recipients))
 	auto, _ := json.Marshal(orEmpty(d.AutoSources))
 	row := r.Pool.QueryRow(ctx,
-		`INSERT INTO digests(name,topic,sources,ignored_sources,frequency_hours,recipients,language,enabled,auto_sources)
-		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING `+digestCols,
-		d.Name, d.Topic, src, ign, d.FrequencyHours, rec, d.Language, d.Enabled, auto)
+		`INSERT INTO digests(name,topic,sources,ignored_sources,frequency_hours,recipients,language,kind,enabled,auto_sources)
+		 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING `+digestCols,
+		d.Name, d.Topic, src, ign, d.FrequencyHours, rec, d.Language, d.Kind, d.Enabled, auto)
 	return scanDigest(row)
 }
 
@@ -154,9 +154,9 @@ func (r *Repo) UpdateDigest(ctx context.Context, d models.Digest) (models.Digest
 	ign, _ := json.Marshal(orEmpty(d.IgnoredSources))
 	rec, _ := json.Marshal(orEmpty(d.Recipients))
 	row := r.Pool.QueryRow(ctx,
-		`UPDATE digests SET name=$2,topic=$3,sources=$4,ignored_sources=$5,frequency_hours=$6,recipients=$7,language=$8,enabled=$9,updated_at=now()
+		`UPDATE digests SET name=$2,topic=$3,sources=$4,ignored_sources=$5,frequency_hours=$6,recipients=$7,language=$8,kind=$9,enabled=$10,updated_at=now()
 		 WHERE id=$1 RETURNING `+digestCols,
-		d.ID, d.Name, d.Topic, src, ign, d.FrequencyHours, rec, d.Language, d.Enabled)
+		d.ID, d.Name, d.Topic, src, ign, d.FrequencyHours, rec, d.Language, d.Kind, d.Enabled)
 	return scanDigest(row)
 }
 
