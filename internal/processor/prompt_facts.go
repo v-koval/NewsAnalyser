@@ -15,6 +15,9 @@ import (
 // the pipeline stays unchanged.
 func buildFactsPrompt(d models.Digest, from, to time.Time) string {
 	dates := calendarRangeDescription(from, to)
+	// d.Sources is intentionally not forwarded: facts are collected from
+	// encyclopedic references the agent picks itself, not from curated
+	// news source lists.
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "Ты — ассистент, формирующий подборку интересных фактов по заданной теме.\n\n")
 	fmt.Fprintf(b, "Тематика подборки: %s\n", d.Topic)
