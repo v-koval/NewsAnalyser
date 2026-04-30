@@ -30,6 +30,7 @@ type Digest struct {
 	FrequencyHours int        `json:"frequency_hours"`
 	Recipients     []string   `json:"recipients"`
 	Language       string     `json:"language"`
+	Kind           string     `json:"kind"`
 	Enabled        bool       `json:"enabled"`
 	LastRunAt      *time.Time `json:"last_run_at"`
 	NextRunAt      *time.Time `json:"next_run_at"`
