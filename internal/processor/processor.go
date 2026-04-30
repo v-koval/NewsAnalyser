@@ -119,7 +119,13 @@ func (p *Processor) Run(ctx context.Context, digestID string, scheduled bool) er
 		from = to.Add(-7 * 24 * time.Hour)
 	}
 
-	prompt := buildPrompt(d, from, to)
+	var prompt string
+	switch d.Kind {
+	case "facts":
+		prompt = buildFactsPrompt(d, from, to)
+	default:
+		prompt = buildPrompt(d, from, to)
+	}
 
 	run := models.DigestRun{
 		DigestID:   d.ID,
@@ -350,8 +356,11 @@ article img{max-width:100%;height:auto;border-radius:6px;margin:12px 0}
 			b.WriteString(`<div>`)
 			b.WriteString(paragraphs(m.FullText))
 			b.WriteString(`</div>`)
-			fmt.Fprintf(&b, `<p class="src">Источник: <a href="%s">%s</a></p></article>`,
-				html.EscapeString(m.URL), html.EscapeString(m.URL))
+			if m.URL != "" {
+				fmt.Fprintf(&b, `<p class="src">Источник: <a href="%s">%s</a></p>`,
+					html.EscapeString(m.URL), html.EscapeString(m.URL))
+			}
+			b.WriteString(`</article>`)
 		}
 	}
 	b.WriteString(`</body></html>`)
