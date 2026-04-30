@@ -87,6 +87,20 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+// normalizeDigestKind validates and normalizes the digest kind.
+// Returns the canonical value and true if valid; empty string and false otherwise.
+// An empty input is treated as "news" for backward compatibility with old clients.
+func normalizeDigestKind(k string) (string, bool) {
+	switch k {
+	case "":
+		return "news", true
+	case "news", "facts":
+		return k, true
+	default:
+		return "", false
+	}
+}
+
 // -------- auth --------
 
 type loginReq struct {
@@ -173,6 +187,12 @@ func (h *Handlers) createDigest(w http.ResponseWriter, r *http.Request) {
 	if d.Language == "" {
 		d.Language = "ru"
 	}
+	kind, ok := normalizeDigestKind(d.Kind)
+	if !ok {
+		writeErr(w, 400, "invalid kind")
+		return
+	}
+	d.Kind = kind
 	created, err := h.Repo.CreateDigest(r.Context(), d)
 	if err != nil {
 		writeErr(w, 500, err.Error())
@@ -203,6 +223,12 @@ func (h *Handlers) updateDigest(w http.ResponseWriter, r *http.Request) {
 	if d.FrequencyHours <= 0 {
 		d.FrequencyHours = 24
 	}
+	kind, ok := normalizeDigestKind(d.Kind)
+	if !ok {
+		writeErr(w, 400, "invalid kind")
+		return
+	}
+	d.Kind = kind
 	updated, err := h.Repo.UpdateDigest(r.Context(), d)
 	if err != nil {
 		writeErr(w, 500, err.Error())
