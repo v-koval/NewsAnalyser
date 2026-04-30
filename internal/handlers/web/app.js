@@ -111,6 +111,7 @@ async function renderDigests() {
             <span class="badge ${d.enabled?'':'off'}">${d.enabled?'включен':'выключен'}</span>
             <span class="badge off">каждые ${d.frequency_hours} ч</span>
             <span class="badge off">${esc(d.language)}</span>
+            <span class="badge off">${(d.kind || 'news') === 'facts' ? 'Факты' : 'Новости'}</span>
           </div>
           <div class="meta">${esc(d.topic || '')}</div>
           <div class="meta">Получатели: ${d.recipients.map(esc).join(', ') || '—'}</div>
@@ -161,10 +162,16 @@ function tagInput(initial, placeholder) {
 
 function openDigestModal(d) {
   const editing = !!d;
-  d = d || {name:'',topic:'',sources:[],ignored_sources:[],frequency_hours:24,recipients:[],language:'ru',enabled:true};
+  d = d || {name:'',topic:'',sources:[],ignored_sources:[],frequency_hours:24,recipients:[],language:'ru',kind:'news',enabled:true};
   const modal = document.createElement('div'); modal.className = 'modal';
   modal.innerHTML = `<form class="card"><h2>${editing?'Редактирование':'Новый'} дайджест</h2>
     <label>Название<input name="name" required></label>
+    <label>Тип дайджеста
+      <select name="kind">
+        <option value="news">Новостной дайджест</option>
+        <option value="facts">Подборка интересных фактов</option>
+      </select>
+    </label>
     <label>Тематика (описание для анализа)<textarea name="topic"></textarea></label>
     <div class="row">
       <label>Регулярность, часов<input type="number" min="1" name="frequency_hours" required></label>
@@ -183,6 +190,7 @@ function openDigestModal(d) {
   const form = modal.querySelector('form');
   form.name.value = d.name; form.topic.value = d.topic; form.frequency_hours.value = d.frequency_hours;
   form.language.value = d.language; form.enabled.checked = !!d.enabled;
+  form.kind.value = d.kind || 'news';
   const ts = tagInput(d.sources, 'example.com, Enter'); modal.querySelector('#ta-sources').appendChild(ts.el);
   const ti = tagInput(d.ignored_sources, 'домен, Enter'); modal.querySelector('#ta-ignored').appendChild(ti.el);
   const tr = tagInput(d.recipients, 'mail@example.com, Enter'); modal.querySelector('#ta-recipients').appendChild(tr.el);
@@ -192,6 +200,7 @@ function openDigestModal(d) {
     const payload = {
       name: form.name.value.trim(),
       topic: form.topic.value.trim(),
+      kind: form.kind.value,
       frequency_hours: parseInt(form.frequency_hours.value, 10),
       language: form.language.value.trim(),
       enabled: form.enabled.checked,
