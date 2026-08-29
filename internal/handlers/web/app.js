@@ -234,7 +234,17 @@ async function renderRuns() {
           <div class="meta">Источники: ${(r.analyzed_sources||[]).map(esc).join(', ') || '—'}</div>
           ${r.error?`<div class="meta err">${esc(r.error)}</div>`:''}
         </div>
-        <div class="actions"><a target="_blank" href="/runs/${r.id}/view"><button class="secondary">Открыть</button></a></div>`;
+        <div class="actions"><button class="secondary" data-act="open">Открыть</button></div>`;
+      el.querySelector('[data-act=open]').onclick = async () => {
+        const win = window.open('about:blank', '_blank');
+        try {
+          const j = await api('/api/runs/' + r.id + '/view-link');
+          win.location = j.url;
+        } catch (e) {
+          if (win) win.close();
+          alert(e.message);
+        }
+      };
       $('#rlist').appendChild(el);
     });
   } catch (e) { $('#rlist').innerHTML = `<p class="err">${esc(e.message)}</p>`; }

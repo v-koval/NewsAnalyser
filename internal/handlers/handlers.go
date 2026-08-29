@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"newsanalyzer/internal/auth"
 	"newsanalyzer/internal/models"
@@ -52,6 +53,7 @@ func (h *Handlers) Mux() http.Handler {
 
 	protected.HandleFunc("GET /api/runs", h.listRuns)
 	protected.HandleFunc("GET /api/runs/{id}", h.getRun)
+	protected.HandleFunc("GET /api/runs/{id}/view-link", h.runViewLink)
 
 	protected.HandleFunc("GET /api/settings", h.getSettings)
 	protected.HandleFunc("PUT /api/settings", h.updateSettings)
@@ -275,7 +277,13 @@ func (h *Handlers) getRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) viewRun(w http.ResponseWriter, r *http.Request) {
-	run, err := h.Repo.GetRun(r.Context(), r.PathValue("id"))
+	id := r.PathValue("id")
+	q := r.URL.Query()
+	if !verifyViewLink(h.Auth.Secret, id, q.Get("exp"), q.Get("sig"), time.Now()) {
+		http.Error(w, "not found", 404)
+		return
+	}
+	run, err := h.Repo.GetRun(r.Context(), id)
 	if err != nil {
 		http.Error(w, "not found", 404)
 		return
