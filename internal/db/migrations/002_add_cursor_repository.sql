@@ -1,0 +1,1 @@
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS cursor_repository TEXT NOT NULL DEFAULT '';
