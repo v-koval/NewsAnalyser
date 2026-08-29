@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -58,5 +59,17 @@ func TestLoginLimiterGC(t *testing.T) {
 	l.Allowed("other-key") // triggers gc
 	if _, exists := l.entries["stale-key"]; exists {
 		t.Fatal("stale entry not collected")
+	}
+}
+
+func TestLoginLimiterBoundedEntries(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	l := NewLoginLimiter()
+	l.now = func() time.Time { return now }
+	for i := 0; i < limiterMaxEntries+100; i++ {
+		l.Fail(fmt.Sprintf("1.2.3.4|user%d@example.com", i))
+	}
+	if len(l.entries) > limiterMaxEntries {
+		t.Fatalf("entries=%d exceeds cap %d", len(l.entries), limiterMaxEntries)
 	}
 }

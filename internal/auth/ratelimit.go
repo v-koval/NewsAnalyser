@@ -10,6 +10,8 @@ const (
 	limiterBaseBlock  = time.Minute
 	limiterMaxBlock   = 15 * time.Minute
 	limiterStaleAfter = 30 * time.Minute
+	limiterMaxEntries = 10000
+	limiterGCInterval = time.Minute
 )
 
 type limiterEntry struct {
@@ -23,10 +25,15 @@ type limiterEntry struct {
 // After limiterThreshold consecutive failures the key is blocked for
 // limiterBaseBlock; every further failure doubles the block up to
 // limiterMaxBlock. A successful login resets the key.
+// Escalation state survives block expiry — after a block ends, the next
+// single failure re-blocks with a doubled duration; only Success resets the
+// key. The map is capped at limiterMaxEntries; when full, an unblocked entry
+// is evicted first.
 type LoginLimiter struct {
 	mu      sync.Mutex
 	entries map[string]*limiterEntry
 	now     func() time.Time
+	lastGC  time.Time
 }
 
 func NewLoginLimiter() *LoginLimiter {
@@ -54,6 +61,12 @@ func (l *LoginLimiter) Fail(key string) {
 	defer l.mu.Unlock()
 	e := l.entries[key]
 	if e == nil {
+		if len(l.entries) >= limiterMaxEntries {
+			l.sweep()
+			if len(l.entries) >= limiterMaxEntries {
+				l.evictOne()
+			}
+		}
 		e = &limiterEntry{}
 		l.entries[key] = e
 	}
@@ -79,12 +92,38 @@ func (l *LoginLimiter) Success(key string) {
 	delete(l.entries, key)
 }
 
-// gc drops entries that are unblocked and stale. Caller must hold l.mu.
+// gc runs sweep at most once per limiterGCInterval. Caller must hold l.mu.
 func (l *LoginLimiter) gc() {
+	if l.now().Sub(l.lastGC) < limiterGCInterval {
+		return
+	}
+	l.lastGC = l.now()
+	l.sweep()
+}
+
+// sweep drops entries that are unblocked and stale. Caller must hold l.mu.
+func (l *LoginLimiter) sweep() {
 	now := l.now()
 	for k, e := range l.entries {
 		if now.After(e.blockedUntil) && now.Sub(e.lastFail) > limiterStaleAfter {
 			delete(l.entries, k)
 		}
+	}
+}
+
+// evictOne makes room when the map is at capacity: prefer any unblocked
+// entry, fall back to an arbitrary one. Caller must hold l.mu.
+func (l *LoginLimiter) evictOne() {
+	now := l.now()
+	fallback := ""
+	for k, e := range l.entries {
+		if now.After(e.blockedUntil) {
+			delete(l.entries, k)
+			return
+		}
+		fallback = k
+	}
+	if fallback != "" {
+		delete(l.entries, fallback)
 	}
 }
