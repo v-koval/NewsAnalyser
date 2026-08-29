@@ -37,6 +37,12 @@ func main() {
 
 	r := repo.New(database.Pool)
 
+	if n, err := r.FailStaleProcessing(ctx); err != nil {
+		log.Printf("fail stale runs: %v", err)
+	} else if n > 0 {
+		log.Printf("marked %d stale processing runs as error", n)
+	}
+
 	if n, _ := r.CountUsers(ctx); n == 0 && cfg.InitAdminEmail != "" && cfg.InitAdminPassword != "" {
 		hash, err := auth.HashPassword(cfg.InitAdminPassword)
 		if err != nil {

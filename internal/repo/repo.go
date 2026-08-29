@@ -276,6 +276,17 @@ func (r *Repo) FinishRun(ctx context.Context, run models.DigestRun) error {
 	return err
 }
 
+// FailStaleProcessing marks runs stuck in 'processing' (typically after a
+// server restart mid-run) as failed. Returns the number of affected rows.
+func (r *Repo) FailStaleProcessing(ctx context.Context) (int64, error) {
+	tag, err := r.Pool.Exec(ctx,
+		`UPDATE digest_runs SET status='error', error='прерван перезапуском сервера', processed_at=now() WHERE status='processing'`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func (r *Repo) AddMaterial(ctx context.Context, runID string, m models.Material) error {
 	_, err := r.Pool.Exec(ctx,
 		`INSERT INTO digest_materials(run_id,url,title,summary_title,summary_text,full_text,image_url,local_image,position)
