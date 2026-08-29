@@ -19,6 +19,7 @@ type Settings struct {
 	SMTPFrom         string `json:"smtp_from"`
 	SMTPTLS          bool   `json:"smtp_tls"`
 	ProcessingPaused bool   `json:"processing_paused"`
+	KeepRunsDays     int    `json:"keep_runs_days"`
 }
 
 type Digest struct {
@@ -62,5 +63,7 @@ type DigestRun struct {
 	HTML            string     `json:"html,omitempty"`
 	Status          string     `json:"status"`
 	Error           string     `json:"error,omitempty"`
+	MailStatus      string     `json:"mail_status"`
+	MailError       string     `json:"mail_error,omitempty"`
 	Materials       []Material `json:"materials,omitempty"`
 }

@@ -107,15 +107,15 @@ func (r *Repo) DeleteUserRefresh(ctx context.Context, userID string) error {
 
 func (r *Repo) GetSettings(ctx context.Context) (models.Settings, error) {
 	var s models.Settings
-	err := r.Pool.QueryRow(ctx, `SELECT cursor_api_key,cursor_repository,smtp_host,smtp_port,smtp_user,smtp_password,smtp_from,smtp_tls,processing_paused FROM settings WHERE id=1`).
-		Scan(&s.CursorAPIKey, &s.CursorRepository, &s.SMTPHost, &s.SMTPPort, &s.SMTPUser, &s.SMTPPassword, &s.SMTPFrom, &s.SMTPTLS, &s.ProcessingPaused)
+	err := r.Pool.QueryRow(ctx, `SELECT cursor_api_key,cursor_repository,smtp_host,smtp_port,smtp_user,smtp_password,smtp_from,smtp_tls,processing_paused,keep_runs_days FROM settings WHERE id=1`).
+		Scan(&s.CursorAPIKey, &s.CursorRepository, &s.SMTPHost, &s.SMTPPort, &s.SMTPUser, &s.SMTPPassword, &s.SMTPFrom, &s.SMTPTLS, &s.ProcessingPaused, &s.KeepRunsDays)
 	return s, err
 }
 
 func (r *Repo) UpdateSettings(ctx context.Context, s models.Settings) error {
 	_, err := r.Pool.Exec(ctx,
-		`UPDATE settings SET cursor_api_key=$1,cursor_repository=$2,smtp_host=$3,smtp_port=$4,smtp_user=$5,smtp_password=$6,smtp_from=$7,smtp_tls=$8,processing_paused=$9 WHERE id=1`,
-		s.CursorAPIKey, s.CursorRepository, s.SMTPHost, s.SMTPPort, s.SMTPUser, s.SMTPPassword, s.SMTPFrom, s.SMTPTLS, s.ProcessingPaused)
+		`UPDATE settings SET cursor_api_key=$1,cursor_repository=$2,smtp_host=$3,smtp_port=$4,smtp_user=$5,smtp_password=$6,smtp_from=$7,smtp_tls=$8,processing_paused=$9,keep_runs_days=$10 WHERE id=1`,
+		s.CursorAPIKey, s.CursorRepository, s.SMTPHost, s.SMTPPort, s.SMTPUser, s.SMTPPassword, s.SMTPFrom, s.SMTPTLS, s.ProcessingPaused, s.KeepRunsDays)
 	return err
 }
 
@@ -286,7 +286,7 @@ func (r *Repo) AddMaterial(ctx context.Context, runID string, m models.Material)
 
 func (r *Repo) ListRuns(ctx context.Context) ([]models.DigestRun, error) {
 	rows, err := r.Pool.Query(ctx,
-		`SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,status,COALESCE(error,'') FROM digest_runs ORDER BY processed_at DESC LIMIT 500`)
+		`SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,status,COALESCE(error,''),mail_status,mail_error FROM digest_runs ORDER BY processed_at DESC LIMIT 500`)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (r *Repo) ListRuns(ctx context.Context) ([]models.DigestRun, error) {
 	for rows.Next() {
 		var run models.DigestRun
 		var analyzed []byte
-		if err := rows.Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.Status, &run.Error); err != nil {
+		if err := rows.Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.Status, &run.Error, &run.MailStatus, &run.MailError); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(analyzed, &run.AnalyzedSources)
@@ -308,8 +308,8 @@ func (r *Repo) GetRun(ctx context.Context, id string) (models.DigestRun, error) 
 	var run models.DigestRun
 	var analyzed []byte
 	err := r.Pool.QueryRow(ctx,
-		`SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,html,status,COALESCE(error,'') FROM digest_runs WHERE id=$1`, id).
-		Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.HTML, &run.Status, &run.Error)
+		`SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,html,status,COALESCE(error,''),mail_status,mail_error FROM digest_runs WHERE id=$1`, id).
+		Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.HTML, &run.Status, &run.Error, &run.MailStatus, &run.MailError)
 	if err != nil {
 		return run, err
 	}
