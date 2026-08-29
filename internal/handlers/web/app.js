@@ -100,7 +100,7 @@ async function renderDigests() {
   v.innerHTML = `<div class="section-head"><h2>Дайджесты</h2><button id="new-digest">+ Новый дайджест</button></div><div id="dlist" class="list">Загрузка…</div>`;
   $('#new-digest').onclick = () => openDigestModal();
   try {
-    const list = await api('/api/digests');
+    const list = (await api('/api/digests?per_page=100')).items;
     $('#dlist').innerHTML = list.length ? '' : '<p>Пока ничего нет.</p>';
     list.forEach(d => {
       const el = document.createElement('div');
@@ -220,7 +220,7 @@ async function renderRuns() {
   const v = $('#view');
   v.innerHTML = `<div class="section-head"><h2>Составленные дайджесты</h2></div><div id="rlist" class="list">Загрузка…</div>`;
   try {
-    const list = await api('/api/runs');
+    const list = (await api('/api/runs?per_page=100')).items;
     if (!list.length) { $('#rlist').innerHTML = '<p>Пока ничего нет.</p>'; return; }
     $('#rlist').innerHTML = '';
     list.forEach(r => {
