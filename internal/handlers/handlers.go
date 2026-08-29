@@ -277,6 +277,7 @@ func (h *Handlers) getRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) viewRun(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	id := r.PathValue("id")
 	q := r.URL.Query()
 	if !verifyViewLink(h.Auth.Secret, id, q.Get("exp"), q.Get("sig"), time.Now()) {

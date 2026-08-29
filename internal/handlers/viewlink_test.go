@@ -57,3 +57,24 @@ func TestRunViewLinkRoundTrip(t *testing.T) {
 		t.Errorf("issued link does not verify: %s", out["url"])
 	}
 }
+
+func TestViewRunRejectsUnsigned(t *testing.T) {
+	h := &Handlers{Auth: auth.New(nil, "s3cret", 15, 720)}
+	cases := []string{
+		"/runs/run-1/view",
+		"/runs/run-1/view?exp=abc&sig=zz",
+		"/runs/run-1/view?exp=1&sig=" + viewLinkSig(h.Auth.Secret, "run-1", 1), // expired
+	}
+	for _, u := range cases {
+		req := httptest.NewRequest("GET", u, nil)
+		req.SetPathValue("id", "run-1")
+		rec := httptest.NewRecorder()
+		h.viewRun(rec, req)
+		if rec.Code != 404 {
+			t.Errorf("%s: got %d, want 404", u, rec.Code)
+		}
+		if rec.Header().Get("Referrer-Policy") != "no-referrer" {
+			t.Errorf("%s: Referrer-Policy = %q, want %q", u, rec.Header().Get("Referrer-Policy"), "no-referrer")
+		}
+	}
+}
