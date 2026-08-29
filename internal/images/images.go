@@ -156,9 +156,9 @@ func (f *Fetcher) ResolveArticleImage(ctx context.Context, articleURL string) (s
 }
 
 var (
-	metaRe     = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
-	linkImgRe  = regexp.MustCompile(`(?is)<link\b[^>]*\brel\s*=\s*["']image_src["'][^>]*>`)
-	attrRe     = regexp.MustCompile(`(?is)(\w[\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
+	metaRe    = regexp.MustCompile(`(?is)<meta\b[^>]*>`)
+	linkImgRe = regexp.MustCompile(`(?is)<link\b[^>]*\brel\s*=\s*["']image_src["'][^>]*>`)
+	attrRe    = regexp.MustCompile(`(?is)(\w[\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))`)
 )
 
 func extractMetaContent(htmlText, prop string) string {

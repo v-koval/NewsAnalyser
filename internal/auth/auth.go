@@ -17,10 +17,10 @@ import (
 )
 
 type Auth struct {
-	Repo            *repo.Repo
-	Secret          []byte
-	AccessTTL       time.Duration
-	RefreshTTL      time.Duration
+	Repo       *repo.Repo
+	Secret     []byte
+	AccessTTL  time.Duration
+	RefreshTTL time.Duration
 }
 
 type Claims struct {

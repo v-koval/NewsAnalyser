@@ -40,9 +40,9 @@ type agentMaterial struct {
 }
 
 type agentResponse struct {
-	Materials          []agentMaterial `json:"materials"`
-	DiscoveredSources  []string        `json:"discovered_sources"`
-	AnalyzedSources    []string        `json:"analyzed_sources"`
+	Materials         []agentMaterial `json:"materials"`
+	DiscoveredSources []string        `json:"discovered_sources"`
+	AnalyzedSources   []string        `json:"analyzed_sources"`
 }
 
 func (p *Processor) tryLock(id string) bool {
