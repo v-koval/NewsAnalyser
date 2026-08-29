@@ -351,7 +351,7 @@ func (r *Repo) GetRun(ctx context.Context, id string) (models.DigestRun, error) 
 // -------- Cleanup --------
 
 func (r *Repo) ListOldRunIDs(ctx context.Context, before time.Time) ([]string, error) {
-	rows, err := r.Pool.Query(ctx, `SELECT id FROM digest_runs WHERE processed_at < $1`, before)
+	rows, err := r.Pool.Query(ctx, `SELECT id FROM digest_runs WHERE processed_at < $1 AND status <> 'processing'`, before)
 	if err != nil {
 		return nil, err
 	}

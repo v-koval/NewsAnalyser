@@ -111,7 +111,8 @@ func (s *Scheduler) tick(ctx context.Context) {
 }
 
 // cleanup prunes expired refresh tokens and, when retention is configured,
-// deletes runs older than keepDays together with their image directories.
+// removes image directories of runs older than keepDays and then deletes the
+// rows; a failed directory removal keeps the row so the next pass retries it.
 func (s *Scheduler) cleanup(ctx context.Context, keepDays int) {
 	if n, err := s.Repo.DeleteExpiredRefresh(ctx); err != nil {
 		log.Printf("cleanup refresh tokens: %v", err)
@@ -130,16 +131,22 @@ func (s *Scheduler) cleanup(ctx context.Context, keepDays int) {
 	if len(ids) == 0 {
 		return
 	}
-	if err := s.Repo.DeleteRunsByID(ctx, ids); err != nil {
+	deletable := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if err := os.RemoveAll(filepath.Join(s.ImagesDir, id)); err != nil {
+			log.Printf("cleanup images %s: %v (run kept for retry)", id, err)
+			continue
+		}
+		deletable = append(deletable, id)
+	}
+	if len(deletable) == 0 {
+		return
+	}
+	if err := s.Repo.DeleteRunsByID(ctx, deletable); err != nil {
 		log.Printf("cleanup delete runs: %v", err)
 		return
 	}
-	for _, id := range ids {
-		if err := os.RemoveAll(filepath.Join(s.ImagesDir, id)); err != nil {
-			log.Printf("cleanup images %s: %v", id, err)
-		}
-	}
-	log.Printf("cleanup: deleted %d runs older than %d days", len(ids), keepDays)
+	log.Printf("cleanup: deleted %d runs older than %d days", len(deletable), keepDays)
 }
 
 func (s *Scheduler) runOne(ctx context.Context, id string, scheduled bool) {
