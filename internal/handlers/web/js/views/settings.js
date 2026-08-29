@@ -94,8 +94,12 @@ export async function renderSettings(view) {
       } catch (err) { toast(err.message, 'error'); }
     };
 
-    await renderUsers(view);
     $('#new-user').onclick = () => openUserModal(null, view);
+    try {
+      await renderUsers(view);
+    } catch (e) {
+      $('#ulist').innerHTML = `<p class="err">${esc(e.message)}</p>`;
+    }
   } catch (e) {
     view.insertAdjacentHTML('beforeend', `<p class="err">${esc(e.message)}</p>`);
   }

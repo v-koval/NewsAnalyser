@@ -69,30 +69,35 @@ function tagInput(initial, placeholder) {
   const wrap = document.createElement('div'); wrap.className = 'tag-input';
   const values = new Set(initial || []);
   const input = document.createElement('input'); input.placeholder = placeholder || '';
-  function redraw() {
+  function redraw(focus = false) {
     wrap.innerHTML = '';
     values.forEach(v => {
       const t = document.createElement('span'); t.className = 'tag';
       t.innerHTML = esc(v) + ' <button type="button">×</button>';
-      t.querySelector('button').onclick = () => { values.delete(v); redraw(); };
+      // mousedown, не click: срабатывает до blur инпута, пока кнопка ещё жива.
+      t.querySelector('button').addEventListener('mousedown', e => {
+        e.preventDefault();
+        values.delete(v); redraw(true);
+      });
       wrap.appendChild(t);
     });
-    wrap.appendChild(input); input.focus();
+    wrap.appendChild(input);
+    if (focus) input.focus();
   }
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       const v = input.value.trim();
-      if (v) { values.add(v); input.value = ''; redraw(); }
+      if (v) { values.add(v); input.value = ''; redraw(true); }
     } else if (e.key === 'Backspace' && !input.value && values.size) {
-      const last = [...values].pop(); values.delete(last); redraw();
+      const last = [...values].pop(); values.delete(last); redraw(true);
     }
   });
   input.addEventListener('blur', () => {
     const v = input.value.trim();
-    if (v) { values.add(v); input.value = ''; redraw(); }
+    if (v) { values.add(v); input.value = ''; redraw(false); }
   });
-  redraw();
+  redraw(false);
   return {el: wrap, get: () => [...values]};
 }
 

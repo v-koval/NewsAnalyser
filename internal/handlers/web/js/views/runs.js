@@ -47,19 +47,26 @@ export async function renderRuns(view) {
 
 async function loadRuns(view) {
   stopRunsRefresh();
-  const q = new URLSearchParams({page: String(page), per_page: String(PER_PAGE)});
-  if (digestId) q.set('digest_id', digestId);
-  if (status) q.set('status', status);
-  const j = await api('/api/runs?' + q);
-  if (page > 1 && !j.items.length) { page = 1; return loadRuns(view); }
-  $('#rtotal').textContent = j.total ? `всего: ${j.total}` : '';
-  const box = $('#rlist');
-  box.innerHTML = j.items.length ? '' : '<p class="empty">Ничего не найдено.</p>';
-  j.items.forEach(r => box.appendChild(runRow(r)));
-  $('#rpager').replaceChildren(pager(j.total, page, PER_PAGE, p => { page = p; loadRuns(view); }));
-  // Auto-refresh while something is processing and the tab is still open.
-  if (j.items.some(r => r.status === 'processing') && location.hash.startsWith('#/runs')) {
-    timer = setTimeout(() => loadRuns(view), 10000);
+  try {
+    const q = new URLSearchParams({page: String(page), per_page: String(PER_PAGE)});
+    if (digestId) q.set('digest_id', digestId);
+    if (status) q.set('status', status);
+    const j = await api('/api/runs?' + q);
+    if (page > 1 && !j.items.length) { page = 1; return loadRuns(view); }
+    $('#rtotal').textContent = j.total ? `всего: ${j.total}` : '';
+    const box = $('#rlist');
+    box.innerHTML = j.items.length ? '' : '<p class="empty">Ничего не найдено.</p>';
+    j.items.forEach(r => box.appendChild(runRow(r)));
+    $('#rpager').replaceChildren(pager(j.total, page, PER_PAGE, p => { page = p; loadRuns(view); }));
+    // Auto-refresh while something is processing and the tab is still open.
+    if (j.items.some(r => r.status === 'processing') && location.hash.startsWith('#/runs')) {
+      timer = setTimeout(() => loadRuns(view), 10000);
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+    if (location.hash.startsWith('#/runs')) {
+      timer = setTimeout(() => loadRuns(view), 10000);
+    }
   }
 }
 
@@ -84,6 +91,10 @@ function runRow(r) {
     // Open synchronously in the click handler so popup blockers stay quiet,
     // then navigate once the signed link arrives.
     const win = window.open('about:blank', '_blank');
+    if (!win) {
+      toast('Разрешите всплывающие окна для этого сайта', 'error');
+      return;
+    }
     try {
       const j = await api(`/api/runs/${r.id}/view-link`);
       win.location = j.url;

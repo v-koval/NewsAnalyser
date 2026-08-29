@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,10 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Windows может переопределить MIME для .js через реестр; модульные
+	// скрипты требуют строго text/javascript.
+	_ = mime.AddExtensionType(".js", "text/javascript; charset=utf-8")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

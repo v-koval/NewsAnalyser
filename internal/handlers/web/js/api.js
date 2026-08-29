@@ -29,6 +29,12 @@ export async function api(path, opts = {}) {
     window.dispatchEvent(new Event('auth:logout'));
     throw new Error('unauthorized');
   }
+  if (res.status === 401) {
+    setTokens('', '');
+    state.user = null;
+    window.dispatchEvent(new Event('auth:logout'));
+    throw new Error('unauthorized');
+  }
   if (!res.ok) {
     let msg = res.statusText;
     try { const j = await res.json(); msg = j.error || msg; } catch {}
