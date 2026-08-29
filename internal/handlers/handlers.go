@@ -3,8 +3,10 @@ package handlers
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -25,12 +27,14 @@ type Handlers struct {
 	Sched     *scheduler.Scheduler
 	Processor *processor.Processor
 	StorageFS http.Handler
+	Limiter   *auth.LoginLimiter
 }
 
 func New(r *repo.Repo, a *auth.Auth, s *scheduler.Scheduler, p *processor.Processor, imagesDir string) *Handlers {
 	return &Handlers{
 		Repo: r, Auth: a, Sched: s, Processor: p,
 		StorageFS: http.StripPrefix("/images/", http.FileServer(http.Dir(imagesDir))),
+		Limiter:   auth.NewLoginLimiter(),
 	}
 }
 
@@ -90,6 +94,17 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
+// clientIP returns the request's remote IP without the port. X-Forwarded-For
+// is deliberately not trusted; behind a reverse proxy the email half of the
+// key keeps per-account limiting meaningful.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // normalizeDigestKind validates and normalizes the digest kind.
 // Returns the canonical value and true if valid; empty string and false otherwise.
 // An empty input is treated as "news" for backward compatibility with old clients.
@@ -117,11 +132,19 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "bad request")
 		return
 	}
-	u, err := h.Repo.GetUserByEmail(r.Context(), strings.ToLower(strings.TrimSpace(in.Email)))
+	email := strings.ToLower(strings.TrimSpace(in.Email))
+	key := clientIP(r) + "|" + email
+	if ok, wait := h.Limiter.Allowed(key); !ok {
+		writeErr(w, 429, fmt.Sprintf("слишком много попыток входа, повторите через %d с", int(wait.Seconds())+1))
+		return
+	}
+	u, err := h.Repo.GetUserByEmail(r.Context(), email)
 	if err != nil || !auth.CheckPassword(u.PasswordHash, in.Password) {
+		h.Limiter.Fail(key)
 		writeErr(w, 401, "invalid credentials")
 		return
 	}
+	h.Limiter.Success(key)
 	access, _ := h.Auth.SignAccess(u.ID)
 	refresh, err := h.Auth.NewRefresh(r.Context(), u.ID)
 	if err != nil {

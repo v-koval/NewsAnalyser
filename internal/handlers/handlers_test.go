@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"newsanalyzer/internal/auth"
 	"newsanalyzer/internal/scheduler"
 )
 
@@ -41,5 +43,21 @@ func TestTriggerDigestQueueFull(t *testing.T) {
 	h.triggerDigest(rec, req)
 	if rec.Code != 503 {
 		t.Fatalf("triggerDigest on full queue = %d, want 503", rec.Code)
+	}
+}
+
+func TestLoginRateLimited(t *testing.T) {
+	h := &Handlers{Limiter: auth.NewLoginLimiter()}
+	// httptest.NewRequest always sets RemoteAddr to 192.0.2.1:1234.
+	key := "192.0.2.1|user@example.com"
+	for i := 0; i < 5; i++ {
+		h.Limiter.Fail(key)
+	}
+	req := httptest.NewRequest("POST", "/api/auth/login",
+		strings.NewReader(`{"email":"user@example.com","password":"x"}`))
+	rec := httptest.NewRecorder()
+	h.login(rec, req)
+	if rec.Code != 429 {
+		t.Fatalf("login while blocked = %d, want 429", rec.Code)
 	}
 }
