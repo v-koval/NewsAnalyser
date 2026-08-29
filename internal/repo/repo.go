@@ -410,6 +410,7 @@ func (r *Repo) GetRun(ctx context.Context, id string) (models.DigestRun, error) 
 		}
 		run.Materials = append(run.Materials, m)
 	}
+	run.MaterialsCount = len(run.Materials)
 	return run, nil
 }
 
