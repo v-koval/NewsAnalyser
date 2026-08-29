@@ -22,6 +22,18 @@ func allowedURL(raw string) error {
 	return nil
 }
 
+// extraBlocked covers ranges Go's IsPrivate does not: RFC 6598 shared
+// address space (CGNAT) and the RFC 6052 NAT64 well-known prefix, through
+// which private IPv4 targets can be smuggled on NAT64 networks.
+var extraBlocked = func() []*net.IPNet {
+	var out []*net.IPNet
+	for _, c := range []string{"100.64.0.0/10", "64:ff9b::/96"} {
+		_, n, _ := net.ParseCIDR(c)
+		out = append(out, n)
+	}
+	return out
+}()
+
 // isPublicIP reports whether ip is a routable public address. Loopback,
 // private, link-local, multicast and unspecified addresses are rejected to
 // prevent SSRF via agent-supplied URLs.
@@ -34,6 +46,11 @@ func isPublicIP(ip net.IP) bool {
 		ip.IsMulticast() || ip.IsUnspecified() {
 		return false
 	}
+	for _, n := range extraBlocked {
+		if n.Contains(ip) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -43,6 +60,9 @@ func isPublicIP(ip net.IP) bool {
 func newSafeClient(timeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	tr := &http.Transport{
+		// Proxy is intentionally nil (unlike http.DefaultTransport): with a
+		// proxy configured, the guard would validate the proxy's address while
+		// the real destination went through unchecked.
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, err := net.SplitHostPort(addr)
 			if err != nil {
