@@ -3,8 +3,10 @@ package mailer
 import (
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"newsanalyzer/internal/models"
 )
@@ -12,6 +14,11 @@ import (
 type Mailer struct{ S models.Settings }
 
 func New(s models.Settings) *Mailer { return &Mailer{S: s} }
+
+const (
+	dialTimeout = 15 * time.Second
+	sendTimeout = 60 * time.Second
+)
 
 func (m *Mailer) Send(to []string, subject, html string) error {
 	if m.S.SMTPHost == "" {
@@ -27,10 +34,60 @@ func (m *Mailer) Send(to []string, subject, html string) error {
 	if m.S.SMTPUser != "" {
 		auth = smtp.PlainAuth("", m.S.SMTPUser, m.S.SMTPPassword, m.S.SMTPHost)
 	}
+	var conn net.Conn
+	var err error
 	if m.S.SMTPPort == 465 {
-		return sendTLS(addr, m.S.SMTPHost, auth, from, to, msg)
+		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: dialTimeout}, "tcp", addr, &tls.Config{ServerName: m.S.SMTPHost})
+	} else {
+		conn, err = net.DialTimeout("tcp", addr, dialTimeout)
 	}
-	return smtp.SendMail(addr, auth, from, to, msg)
+	if err != nil {
+		return err
+	}
+	_ = conn.SetDeadline(time.Now().Add(sendTimeout))
+	return send(conn, m.S.SMTPHost, m.S.SMTPPort, auth, from, to, msg)
+}
+
+// send drives the SMTP conversation over an established connection that
+// already carries a deadline. For non-465 ports it upgrades via STARTTLS
+// when the server offers it, matching net/smtp.SendMail semantics.
+func send(conn net.Conn, host string, port int, auth smtp.Auth, from string, to []string, msg []byte) error {
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+	defer c.Quit()
+	if port != 465 {
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			if err := c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+				return err
+			}
+		}
+	}
+	if auth != nil {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err := c.Auth(auth); err != nil {
+				return err
+			}
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return err
+	}
+	for _, r := range to {
+		if err := c.Rcpt(r); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	return w.Close()
 }
 
 func buildMessage(from string, to []string, subject, html string) []byte {
@@ -77,37 +134,4 @@ func base64(s string) string {
 		}
 	}
 	return out.String()
-}
-
-func sendTLS(addr, host string, auth smtp.Auth, from string, to []string, msg []byte) error {
-	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
-	if err != nil {
-		return err
-	}
-	c, err := smtp.NewClient(conn, host)
-	if err != nil {
-		return err
-	}
-	defer c.Quit()
-	if auth != nil {
-		if err := c.Auth(auth); err != nil {
-			return err
-		}
-	}
-	if err := c.Mail(from); err != nil {
-		return err
-	}
-	for _, r := range to {
-		if err := c.Rcpt(r); err != nil {
-			return err
-		}
-	}
-	w, err := c.Data()
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(msg); err != nil {
-		return err
-	}
-	return w.Close()
 }
