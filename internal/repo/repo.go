@@ -278,6 +278,11 @@ func (r *Repo) FinishRun(ctx context.Context, run models.DigestRun) error {
 	return err
 }
 
+func (r *Repo) SetRunMail(ctx context.Context, runID, status, errText string) error {
+	_, err := r.Pool.Exec(ctx, `UPDATE digest_runs SET mail_status=$2, mail_error=$3 WHERE id=$1`, runID, status, errText)
+	return err
+}
+
 // FailStaleProcessing marks runs stuck in 'processing' (typically after a
 // server restart mid-run) as failed. Returns the number of affected rows.
 func (r *Repo) FailStaleProcessing(ctx context.Context) (int64, error) {

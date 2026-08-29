@@ -197,7 +197,7 @@ func (p *Processor) Run(ctx context.Context, digestID string, scheduled bool) er
 		if len(ar.DiscoveredSources) > 0 && len(d.Sources) == 0 {
 			_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 		}
-		sendMail(d, run, settings)
+		p.sendMailAndRecord(ctx, d, run, settings)
 		return nil
 	}
 
@@ -241,17 +241,33 @@ func (p *Processor) Run(ctx context.Context, digestID string, scheduled bool) er
 	if len(ar.DiscoveredSources) > 0 {
 		_ = p.Repo.AppendAutoSources(ctx, d.ID, ar.DiscoveredSources)
 	}
-	sendMail(d, run, settings)
+	p.sendMailAndRecord(ctx, d, run, settings)
 	return nil
 }
 
-func sendMail(d models.Digest, run models.DigestRun, s models.Settings) {
+// sendMailAndRecord sends the digest email with retries and records the
+// delivery outcome on the run so the UI can surface failures.
+func (p *Processor) sendMailAndRecord(ctx context.Context, d models.Digest, run models.DigestRun, s models.Settings) {
 	if len(d.Recipients) == 0 || s.SMTPHost == "" {
+		if err := p.Repo.SetRunMail(ctx, run.ID, "skipped", ""); err != nil {
+			log.Printf("set mail status: %v", err)
+		}
 		return
 	}
 	m := mailer.New(s)
-	if err := m.Send(d.Recipients, d.Name, run.HTML); err != nil {
-		log.Printf("send mail: %v", err)
+	err := retry(ctx, []time.Duration{0, 5 * time.Second, 30 * time.Second}, func() error {
+		err := m.Send(d.Recipients, d.Name, run.HTML)
+		if err != nil {
+			log.Printf("send mail (digest %s): %v", d.ID, err)
+		}
+		return err
+	})
+	status, errText := "sent", ""
+	if err != nil {
+		status, errText = "failed", err.Error()
+	}
+	if err := p.Repo.SetRunMail(ctx, run.ID, status, errText); err != nil {
+		log.Printf("set mail status: %v", err)
 	}
 }
 
