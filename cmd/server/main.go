@@ -55,7 +55,7 @@ func main() {
 
 	a := auth.New(r, cfg.JWTSecret, cfg.AccessTTLMin, cfg.RefreshTTLHours)
 	p := processor.New(r, img)
-	sch := scheduler.New(r, p)
+	sch := scheduler.New(r, p, imagesDir)
 	sch.Start(ctx)
 
 	h := handlers.New(r, a, sch, p, imagesDir)

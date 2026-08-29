@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"io/fs"
+	"log"
 	"net/http"
 	"strings"
 
@@ -198,8 +199,8 @@ func (h *Handlers) createDigest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	if created.Enabled {
-		h.Sched.Trigger(created.ID)
+	if created.Enabled && !h.Sched.Trigger(created.ID) {
+		log.Printf("create digest %s: trigger queue full, scheduler tick will pick it up", created.ID)
 	}
 	writeJSON(w, 200, created)
 }
@@ -246,8 +247,10 @@ func (h *Handlers) deleteDigest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) triggerDigest(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	h.Sched.Trigger(id)
+	if !h.Sched.Trigger(r.PathValue("id")) {
+		writeErr(w, 503, "очередь запусков переполнена, попробуйте позже")
+		return
+	}
 	writeJSON(w, 202, map[string]string{"status": "queued"})
 }
 

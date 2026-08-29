@@ -10,19 +10,25 @@ import (
 )
 
 type Scheduler struct {
-	Repo      *repo.Repo
-	Processor *processor.Processor
-	trigger   chan string
+	Repo        *repo.Repo
+	Processor   *processor.Processor
+	ImagesDir   string
+	trigger     chan string
+	lastCleanup time.Time
 }
 
-func New(r *repo.Repo, p *processor.Processor) *Scheduler {
-	return &Scheduler{Repo: r, Processor: p, trigger: make(chan string, 32)}
+func New(r *repo.Repo, p *processor.Processor, imagesDir string) *Scheduler {
+	return &Scheduler{Repo: r, Processor: p, ImagesDir: imagesDir, trigger: make(chan string, 32)}
 }
 
-func (s *Scheduler) Trigger(digestID string) {
+// Trigger queues a manual run. It reports false when the queue is full so the
+// caller can tell the user instead of silently dropping the run.
+func (s *Scheduler) Trigger(digestID string) bool {
 	select {
 	case s.trigger <- digestID:
+		return true
 	default:
+		return false
 	}
 }
 
@@ -41,7 +47,7 @@ func (s *Scheduler) loop(ctx context.Context) {
 		case <-t.C:
 			s.tick(ctx)
 		case id := <-s.trigger:
-			s.runOne(ctx, id, false)
+			go s.runOne(ctx, id, false)
 		}
 	}
 }
