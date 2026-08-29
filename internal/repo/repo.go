@@ -348,6 +348,41 @@ func (r *Repo) GetRun(ctx context.Context, id string) (models.DigestRun, error) 
 	return run, nil
 }
 
+// -------- Cleanup --------
+
+func (r *Repo) ListOldRunIDs(ctx context.Context, before time.Time) ([]string, error) {
+	rows, err := r.Pool.Query(ctx, `SELECT id FROM digest_runs WHERE processed_at < $1`, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func (r *Repo) DeleteRunsByID(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := r.Pool.Exec(ctx, `DELETE FROM digest_runs WHERE id = ANY($1)`, ids)
+	return err
+}
+
+func (r *Repo) DeleteExpiredRefresh(ctx context.Context) (int64, error) {
+	tag, err := r.Pool.Exec(ctx, `DELETE FROM refresh_tokens WHERE expires_at < now()`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 func orEmpty[T any](s []T) []T {
 	if s == nil {
 		return []T{}

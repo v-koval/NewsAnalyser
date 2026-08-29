@@ -329,6 +329,10 @@ func (h *Handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
 	if s.SMTPPassword == "" || s.SMTPPassword == "********" {
 		s.SMTPPassword = current.SMTPPassword
 	}
+	if s.KeepRunsDays < 0 {
+		writeErr(w, 400, "keep_runs_days must be >= 0")
+		return
+	}
 	if s.SMTPPort == 0 {
 		s.SMTPPort = 587
 	}

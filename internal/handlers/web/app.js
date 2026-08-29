@@ -307,6 +307,7 @@ async function renderSettings() {
       smtp_user: form.smtp_user.value, smtp_password: form.smtp_password.value,
       smtp_from: form.smtp_from.value, smtp_tls: form.smtp_tls.checked,
       processing_paused: s.processing_paused,
+      keep_runs_days: s.keep_runs_days || 0,
     };
     try { await api('/api/settings', {method:'PUT', body: JSON.stringify(payload)}); $('#s-err').textContent = 'Сохранено'; renderSettings(); }
     catch (err) { $('#s-err').textContent = err.message; }

@@ -3,6 +3,8 @@ package scheduler
 import (
 	"context"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"newsanalyzer/internal/processor"
@@ -58,6 +60,10 @@ func (s *Scheduler) tick(ctx context.Context) {
 		log.Printf("scheduler settings: %v", err)
 		return
 	}
+	if time.Since(s.lastCleanup) >= 24*time.Hour {
+		s.cleanup(ctx, settings.KeepRunsDays)
+		s.lastCleanup = time.Now()
+	}
 	if settings.ProcessingPaused {
 		return
 	}
@@ -102,6 +108,38 @@ func (s *Scheduler) tick(ctx context.Context) {
 		// Normal slot: next_run_at <= now < next_run_at + freq.
 		go s.runOne(ctx, d.ID, true)
 	}
+}
+
+// cleanup prunes expired refresh tokens and, when retention is configured,
+// deletes runs older than keepDays together with their image directories.
+func (s *Scheduler) cleanup(ctx context.Context, keepDays int) {
+	if n, err := s.Repo.DeleteExpiredRefresh(ctx); err != nil {
+		log.Printf("cleanup refresh tokens: %v", err)
+	} else if n > 0 {
+		log.Printf("cleanup: deleted %d expired refresh tokens", n)
+	}
+	if keepDays <= 0 {
+		return
+	}
+	before := time.Now().UTC().AddDate(0, 0, -keepDays)
+	ids, err := s.Repo.ListOldRunIDs(ctx, before)
+	if err != nil {
+		log.Printf("cleanup list old runs: %v", err)
+		return
+	}
+	if len(ids) == 0 {
+		return
+	}
+	if err := s.Repo.DeleteRunsByID(ctx, ids); err != nil {
+		log.Printf("cleanup delete runs: %v", err)
+		return
+	}
+	for _, id := range ids {
+		if err := os.RemoveAll(filepath.Join(s.ImagesDir, id)); err != nil {
+			log.Printf("cleanup images %s: %v", id, err)
+		}
+	}
+	log.Printf("cleanup: deleted %d runs older than %d days", len(ids), keepDays)
 }
 
 func (s *Scheduler) runOne(ctx context.Context, id string, scheduled bool) {
