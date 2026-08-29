@@ -23,14 +23,19 @@ type Fetcher struct {
 }
 
 func New(dir, publicBase string) *Fetcher {
-	return &Fetcher{Dir: dir, PublicBase: publicBase, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	return &Fetcher{Dir: dir, PublicBase: publicBase, HTTP: newSafeClient(30 * time.Second)}
 }
+
+const maxImageBytes = 10 << 20 // 10 MB
 
 // Fetch downloads the image URL into <Dir>/<runID>/<hash>.<ext>.
 // Returns the local filesystem path and the public URL path (e.g. /images/<runID>/<hash>.<ext>).
 func (f *Fetcher) Fetch(ctx context.Context, runID, url string) (string, string, error) {
 	if url == "" {
 		return "", "", nil
+	}
+	if err := allowedURL(url); err != nil {
+		return "", "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -44,7 +49,11 @@ func (f *Fetcher) Fetch(ctx context.Context, runID, url string) (string, string,
 	if resp.StatusCode >= 400 {
 		return "", "", fmt.Errorf("image %s: %d", url, resp.StatusCode)
 	}
-	ext := extFromContentType(resp.Header.Get("Content-Type"))
+	ct := strings.ToLower(strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0]))
+	if !strings.HasPrefix(ct, "image/") {
+		return "", "", fmt.Errorf("image %s: unexpected content type %q", url, ct)
+	}
+	ext := extFromContentType(ct)
 	if ext == "" {
 		ext = extFromURL(url)
 	}
@@ -62,9 +71,17 @@ func (f *Fetcher) Fetch(ctx context.Context, runID, url string) (string, string,
 	if err != nil {
 		return "", "", err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	n, err := io.Copy(out, io.LimitReader(resp.Body, maxImageBytes+1))
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(full)
 		return "", "", err
+	}
+	if n > maxImageBytes {
+		_ = os.Remove(full)
+		return "", "", fmt.Errorf("image %s exceeds %d bytes", url, maxImageBytes)
 	}
 	public := strings.TrimRight(f.PublicBase, "/") + "/images/" + runID + "/" + name
 	return full, public, nil
@@ -93,6 +110,9 @@ func extFromContentType(ct string) string {
 func (f *Fetcher) ResolveArticleImage(ctx context.Context, articleURL string) (string, error) {
 	if articleURL == "" {
 		return "", nil
+	}
+	if err := allowedURL(articleURL); err != nil {
+		return "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", articleURL, nil)
 	if err != nil {
