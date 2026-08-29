@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,7 +25,7 @@ func (m *Mailer) Send(to []string, subject, html string) error {
 	if m.S.SMTPHost == "" {
 		return fmt.Errorf("smtp not configured")
 	}
-	addr := fmt.Sprintf("%s:%d", m.S.SMTPHost, m.S.SMTPPort)
+	addr := net.JoinHostPort(m.S.SMTPHost, strconv.Itoa(m.S.SMTPPort))
 	from := m.S.SMTPFrom
 	if from == "" {
 		from = m.S.SMTPUser
