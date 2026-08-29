@@ -187,13 +187,15 @@ func (r *Repo) DeleteDigest(ctx context.Context, id string) error {
 	return err
 }
 
-// LastRunPeriodTo returns period_to of the most recent finished run
-// (status != 'processing') for the given digest, or nil if there is none.
+// LastRunPeriodTo returns period_to of the most recent SUCCESSFUL run
+// (status ok or empty) for the given digest, or nil if there is none.
+// Failed runs are excluded on purpose: their window must be re-covered
+// by the next run instead of being silently skipped.
 func (r *Repo) LastRunPeriodTo(ctx context.Context, digestID string) (*time.Time, error) {
 	var t time.Time
 	err := r.Pool.QueryRow(ctx,
 		`SELECT period_to FROM digest_runs
-		 WHERE digest_id=$1 AND status <> 'processing'
+		 WHERE digest_id=$1 AND status IN ('ok','empty')
 		 ORDER BY period_to DESC LIMIT 1`,
 		digestID).Scan(&t)
 	if errors.Is(err, pgx.ErrNoRows) {
