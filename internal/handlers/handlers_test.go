@@ -61,3 +61,49 @@ func TestLoginRateLimited(t *testing.T) {
 		t.Fatalf("login while blocked = %d, want 429", rec.Code)
 	}
 }
+
+func TestPageParams(t *testing.T) {
+	cases := []struct {
+		query   string
+		limit   int
+		offset  int
+		wantErr bool
+	}{
+		{"", 20, 0, false},
+		{"?page=1&per_page=20", 20, 0, false},
+		{"?page=3&per_page=50", 50, 100, false},
+		{"?per_page=100", 100, 0, false},
+		{"?page=0", 0, 0, true},
+		{"?page=-1", 0, 0, true},
+		{"?page=abc", 0, 0, true},
+		{"?per_page=0", 0, 0, true},
+		{"?per_page=101", 0, 0, true},
+		{"?per_page=abc", 0, 0, true},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest("GET", "/api/runs"+c.query, nil)
+		limit, offset, err := pageParams(req)
+		if (err != nil) != c.wantErr || limit != c.limit || offset != c.offset {
+			t.Errorf("pageParams(%q) = (%d, %d, %v), want (%d, %d, err=%v)",
+				c.query, limit, offset, err, c.limit, c.offset, c.wantErr)
+		}
+	}
+}
+
+func TestListRunsRejectsBadParams(t *testing.T) {
+	h := &Handlers{} // params are rejected before the repo is touched
+	for _, u := range []string{
+		"/api/runs?page=0",
+		"/api/runs?per_page=101",
+		"/api/runs?page=abc",
+		"/api/runs?digest_id=not-a-uuid",
+		"/api/runs?status=weird",
+	} {
+		req := httptest.NewRequest("GET", u, nil)
+		rec := httptest.NewRecorder()
+		h.listRuns(rec, req)
+		if rec.Code != 400 {
+			t.Errorf("%s: got %d, want 400", u, rec.Code)
+		}
+	}
+}

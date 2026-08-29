@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -182,6 +183,44 @@ func (r *Repo) ListDigests(ctx context.Context) ([]models.Digest, error) {
 	return out, nil
 }
 
+func (r *Repo) ListDigestsPage(ctx context.Context, limit, offset int) ([]models.Digest, int, error) {
+	var total int
+	if err := r.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM digests`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := r.Pool.Query(ctx, `SELECT `+digestCols+` FROM digests ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []models.Digest{}
+	for rows.Next() {
+		d, err := scanDigest(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, d)
+	}
+	return out, total, nil
+}
+
+func (r *Repo) ListDigestOptions(ctx context.Context) ([]models.DigestOption, error) {
+	rows, err := r.Pool.Query(ctx, `SELECT id,name FROM digests ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []models.DigestOption{}
+	for rows.Next() {
+		var o models.DigestOption
+		if err := rows.Scan(&o.ID, &o.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, nil
+}
+
 func (r *Repo) DeleteDigest(ctx context.Context, id string) error {
 	_, err := r.Pool.Exec(ctx, `DELETE FROM digests WHERE id=$1`, id)
 	return err
@@ -302,24 +341,50 @@ func (r *Repo) AddMaterial(ctx context.Context, runID string, m models.Material)
 	return err
 }
 
-func (r *Repo) ListRuns(ctx context.Context) ([]models.DigestRun, error) {
-	rows, err := r.Pool.Query(ctx,
-		`SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,status,COALESCE(error,''),mail_status,mail_error FROM digest_runs ORDER BY processed_at DESC LIMIT 500`)
+// RunsFilter narrows and pages the run listing. Empty string fields are
+// ignored; Status values are validated by the handler.
+type RunsFilter struct {
+	DigestID string
+	Status   string
+	Limit    int
+	Offset   int
+}
+
+func (r *Repo) ListRunsPage(ctx context.Context, f RunsFilter) ([]models.DigestRun, int, error) {
+	where := " WHERE 1=1"
+	args := []any{}
+	if f.DigestID != "" {
+		args = append(args, f.DigestID)
+		where += fmt.Sprintf(" AND digest_id=$%d", len(args))
+	}
+	if f.Status != "" {
+		args = append(args, f.Status)
+		where += fmt.Sprintf(" AND status=$%d", len(args))
+	}
+	var total int
+	if err := r.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM digest_runs`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, f.Limit, f.Offset)
+	q := `SELECT id,digest_id,digest_name,analyzed_sources,processed_at,period_from,period_to,status,COALESCE(error,''),mail_status,mail_error,
+	(SELECT COUNT(*) FROM digest_materials m WHERE m.run_id = digest_runs.id)
+	FROM digest_runs` + where + fmt.Sprintf(` ORDER BY processed_at DESC LIMIT $%d OFFSET $%d`, len(args)-1, len(args))
+	rows, err := r.Pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := []models.DigestRun{}
 	for rows.Next() {
 		var run models.DigestRun
 		var analyzed []byte
-		if err := rows.Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.Status, &run.Error, &run.MailStatus, &run.MailError); err != nil {
-			return nil, err
+		if err := rows.Scan(&run.ID, &run.DigestID, &run.DigestName, &analyzed, &run.ProcessedAt, &run.PeriodFrom, &run.PeriodTo, &run.Status, &run.Error, &run.MailStatus, &run.MailError, &run.MaterialsCount); err != nil {
+			return nil, 0, err
 		}
 		_ = json.Unmarshal(analyzed, &run.AnalyzedSources)
 		out = append(out, run)
 	}
-	return out, nil
+	return out, total, nil
 }
 
 func (r *Repo) GetRun(ctx context.Context, id string) (models.DigestRun, error) {

@@ -65,5 +65,12 @@ type DigestRun struct {
 	Error           string     `json:"error,omitempty"`
 	MailStatus      string     `json:"mail_status"`
 	MailError       string     `json:"mail_error,omitempty"`
+	MaterialsCount  int        `json:"materials_count"`
 	Materials       []Material `json:"materials,omitempty"`
+}
+
+// DigestOption is a lightweight digest reference for filter dropdowns.
+type DigestOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }

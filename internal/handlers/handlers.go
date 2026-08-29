@@ -3,11 +3,14 @@ package handlers
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"net"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +51,7 @@ func (h *Handlers) Mux() http.Handler {
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /api/me", h.me)
 
+	protected.HandleFunc("GET /api/digests/options", h.digestOptions)
 	protected.HandleFunc("GET /api/digests", h.listDigests)
 	protected.HandleFunc("POST /api/digests", h.createDigest)
 	protected.HandleFunc("GET /api/digests/{id}", h.getDigest)
@@ -104,6 +108,37 @@ func clientIP(r *http.Request) string {
 	}
 	return host
 }
+
+type listResponse[T any] struct {
+	Items []T `json:"items"`
+	Total int `json:"total"`
+}
+
+var errBadPageParams = errors.New("invalid page/per_page")
+
+// pageParams parses ?page and ?per_page (defaults 1 and 20, per_page 1..100)
+// into a LIMIT/OFFSET pair.
+func pageParams(r *http.Request) (limit, offset int, err error) {
+	page, per := 1, 20
+	q := r.URL.Query()
+	if v := q.Get("page"); v != "" {
+		page, err = strconv.Atoi(v)
+		if err != nil || page < 1 {
+			return 0, 0, errBadPageParams
+		}
+	}
+	if v := q.Get("per_page"); v != "" {
+		per, err = strconv.Atoi(v)
+		if err != nil || per < 1 || per > 100 {
+			return 0, 0, errBadPageParams
+		}
+	}
+	return per, (page - 1) * per, nil
+}
+
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+var runStatuses = map[string]bool{"ok": true, "error": true, "empty": true, "processing": true}
 
 // normalizeDigestKind validates and normalizes the digest kind.
 // Returns the canonical value and true if valid; empty string and false otherwise.
@@ -193,12 +228,26 @@ func (h *Handlers) me(w http.ResponseWriter, r *http.Request) {
 // -------- digests --------
 
 func (h *Handlers) listDigests(w http.ResponseWriter, r *http.Request) {
-	list, err := h.Repo.ListDigests(r.Context())
+	limit, offset, err := pageParams(r)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	items, total, err := h.Repo.ListDigestsPage(r.Context(), limit, offset)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, list)
+	writeJSON(w, 200, listResponse[models.Digest]{Items: items, Total: total})
+}
+
+func (h *Handlers) digestOptions(w http.ResponseWriter, r *http.Request) {
+	opts, err := h.Repo.ListDigestOptions(r.Context())
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, opts)
 }
 
 func (h *Handlers) createDigest(w http.ResponseWriter, r *http.Request) {
@@ -282,12 +331,33 @@ func (h *Handlers) triggerDigest(w http.ResponseWriter, r *http.Request) {
 // -------- runs --------
 
 func (h *Handlers) listRuns(w http.ResponseWriter, r *http.Request) {
-	list, err := h.Repo.ListRuns(r.Context())
+	limit, offset, err := pageParams(r)
+	if err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	f := repo.RunsFilter{Limit: limit, Offset: offset}
+	q := r.URL.Query()
+	if v := q.Get("digest_id"); v != "" {
+		if !uuidRe.MatchString(v) {
+			writeErr(w, 400, "invalid digest_id")
+			return
+		}
+		f.DigestID = v
+	}
+	if v := q.Get("status"); v != "" {
+		if !runStatuses[v] {
+			writeErr(w, 400, "invalid status")
+			return
+		}
+		f.Status = v
+	}
+	items, total, err := h.Repo.ListRunsPage(r.Context(), f)
 	if err != nil {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, list)
+	writeJSON(w, 200, listResponse[models.DigestRun]{Items: items, Total: total})
 }
 
 func (h *Handlers) getRun(w http.ResponseWriter, r *http.Request) {
