@@ -124,7 +124,7 @@ function openDigestModal(d, view) {
     <label class="check"><input type="checkbox" name="enabled"> Включен</label>
     <div class="err" id="d-err"></div>
     <div class="row actions-end">
-      <button type="button" class="secondary" id="d-cancel">Отмена</button>
+      <button type="button" id="d-cancel">Отмена</button>
       <button type="submit" class="primary">Сохранить</button>
     </div></form>`;
   document.body.appendChild(modal);

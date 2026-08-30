@@ -40,7 +40,7 @@ export function confirmDialog({title = 'Подтверждение', text = '', 
       <h2>${esc(title)}</h2>
       <p class="muted">${esc(text)}</p>
       <div class="row actions-end">
-        <button type="button" class="secondary" data-act="cancel">Отмена</button>
+        <button type="button" data-act="cancel">Отмена</button>
         <button type="button" class="danger" data-act="ok">${esc(okLabel)}</button>
       </div></div>`;
     const done = v => { modal.remove(); resolve(v); };

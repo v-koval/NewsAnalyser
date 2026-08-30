@@ -8,7 +8,7 @@ export async function renderSettings(view) {
         <label>Хранить историю, дней (0 — вечно)<input type="number" min="0" id="keep-days"></label>
       </div>
       <div class="row actions-end">
-        <button id="toggle-proc" class="secondary">…</button>
+        <button id="toggle-proc">…</button>
         <button id="save-proc" class="primary">Сохранить</button>
       </div>
     </div>
@@ -140,7 +140,7 @@ function openUserModal(u, view) {
     <label>Пароль ${editing ? '(пусто — не менять)' : ''}<input name="password" type="password" ${editing ? '' : 'required'}></label>
     <div class="err" id="u-err"></div>
     <div class="row actions-end">
-      <button type="button" class="secondary" id="u-cancel">Отмена</button>
+      <button type="button" id="u-cancel">Отмена</button>
       <button type="submit" class="primary">Сохранить</button>
     </div></form>`;
   document.body.appendChild(modal);
